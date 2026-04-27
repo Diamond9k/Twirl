@@ -1,0 +1,15 @@
+{
+  "primary": "#F472B6",
+  "rose": "#FB7185",
+  "blush": "#FDE8EF",
+  "cream": "#FFF9F5",
+  "text": "#1C1024",
+  "muted": "#9CA3AF",
+  "white": "#FFFFFF",
+  "border": "#FCE7F3",
+  "success": "#10B981",
+  "radius": 18,
+  "font_size": 13,
+  "card_gap": 12,
+  "dark_mode": false
+}
