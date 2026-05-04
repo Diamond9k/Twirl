@@ -53,8 +53,8 @@ export default function ContractScreen() {
       const { error: presentError } = await presentPaymentSheet();
       if (presentError) throw new Error(presentError.message);
 
-      // Log contract agreement
-      await supabase.from("rental_contracts").insert({
+      // Log contract agreement. Payment status is finalized by trusted backend code.
+      const { error: contractError } = await supabase.from("rental_contracts").insert({
         rental_id: rental.id,
         renter_id: user!.id,
         owner_id: rental.items.owner_id,
@@ -62,8 +62,8 @@ export default function ContractScreen() {
         deposit_intent_id: depositIntentClientSecret?.split("_secret")[0],
         terms_version: "1.0",
       });
+      if (contractError) throw contractError;
 
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", id);
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Payment failed", e.message);
