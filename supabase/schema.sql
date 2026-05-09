@@ -13,6 +13,162 @@ create or replace function set_updated_at()
 returns trigger language plpgsql as $$
 begin new.updated_at = now(); return new; end; $$;
 
+-- Client sessions can edit profile text fields, but trust/moderation fields are
+-- server-owned. Service-role jobs have no end-user auth.uid() and can still
+-- maintain these values.
+create or replace function prevent_profile_trust_field_changes()
+returns trigger language plpgsql as $$
+begin
+  if auth.uid() is not null
+     and auth.uid() = new.id
+     and (
+       new.is_verified is distinct from old.is_verified or
+       new.is_suspended is distinct from old.is_suspended or
+       new.rating is distinct from old.rating or
+       new.total_rentals is distinct from old.total_rentals or
+       new.total_earnings is distinct from old.total_earnings
+     ) then
+    raise exception 'Profile trust fields are server-owned';
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Moderation flags must not be cleared by the item owner after review.
+create or replace function prevent_item_moderation_field_changes()
+returns trigger language plpgsql as $$
+begin
+  if auth.uid() is not null
+     and auth.uid() = old.owner_id
+     and old.is_flagged = true
+     and new.is_flagged = false then
+    raise exception 'Item moderation fields are server-owned';
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Rental parties may only perform the client-side status transitions supported
+-- by the app. Payment, pricing, participant, and fulfillment fields must be
+-- written by trusted backend code.
+create or replace function prevent_rental_server_field_changes()
+returns trigger language plpgsql as $$
+begin
+  if auth.uid() is null then
+    return new;
+  end if;
+
+  if auth.uid() = old.renter_id or auth.uid() = old.owner_id then
+    if new.item_id is distinct from old.item_id or
+       new.renter_id is distinct from old.renter_id or
+       new.owner_id is distinct from old.owner_id or
+       new.conversation_id is distinct from old.conversation_id or
+       new.start_date is distinct from old.start_date or
+       new.end_date is distinct from old.end_date or
+       new.total_price is distinct from old.total_price or
+       new.commission_amount is distinct from old.commission_amount or
+       new.deposit_amount is distinct from old.deposit_amount or
+       new.stripe_payment_intent is distinct from old.stripe_payment_intent or
+       new.stripe_deposit_intent is distinct from old.stripe_deposit_intent or
+       new.contract_agreed is distinct from old.contract_agreed or
+       new.contract_agreed_at is distinct from old.contract_agreed_at or
+       new.return_confirmed_at is distinct from old.return_confirmed_at or
+       new.deposit_released_at is distinct from old.deposit_released_at then
+      raise exception 'Rental financial and participant fields are server-owned';
+    end if;
+
+    if new.status is distinct from old.status then
+      if auth.uid() = old.owner_id and old.status = 'pending' and new.status in ('approved', 'cancelled') then
+        return new;
+      end if;
+
+      if auth.uid() = old.renter_id and old.status in ('pending', 'approved') and new.status = 'cancelled' then
+        return new;
+      end if;
+
+      raise exception 'Rental status transition is not allowed from the client';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Contract and review audit rows must describe the actual rental parties.
+create or replace function enforce_contract_matches_rental()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  rental_row record;
+begin
+  select * into rental_row from rentals where id = new.rental_id;
+
+  if not found then
+    raise exception 'Rental contract must reference an existing rental';
+  end if;
+
+  if new.renter_id is distinct from rental_row.renter_id or
+     new.owner_id is distinct from rental_row.owner_id then
+    raise exception 'Rental contract parties must match the rental';
+  end if;
+
+  if auth.uid() is not null and auth.uid() is distinct from rental_row.renter_id then
+    raise exception 'Only the rental renter can create the contract';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function enforce_review_matches_rental()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  rental_row record;
+begin
+  select * into rental_row from rentals where id = new.rental_id;
+
+  if not found then
+    raise exception 'Review must reference an existing rental';
+  end if;
+
+  if new.reviewer_id = rental_row.renter_id and new.reviewee_id = rental_row.owner_id then
+    return new;
+  end if;
+
+  if new.reviewer_id = rental_row.owner_id and new.reviewee_id = rental_row.renter_id then
+    return new;
+  end if;
+
+  raise exception 'Review parties must match the rental';
+end;
+$$;
+
+-- Message updates are only for soft-delete; content history is immutable.
+create or replace function enforce_message_soft_delete_only()
+returns trigger language plpgsql as $$
+begin
+  if auth.uid() is not null and auth.uid() = old.sender_id then
+    if new.conversation_id is distinct from old.conversation_id or
+       new.sender_id is distinct from old.sender_id or
+       new.content is distinct from old.content or
+       new.created_at is distinct from old.created_at then
+      raise exception 'Message content cannot be edited';
+    end if;
+
+    if old.is_deleted = false and new.is_deleted = true then
+      return new;
+    end if;
+
+    if new.is_deleted is distinct from old.is_deleted then
+      raise exception 'Messages can only be soft-deleted';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
 -- Enforce .edu email domain
 create or replace function is_edu_email(email text)
 returns boolean language sql immutable as $$
@@ -43,9 +199,11 @@ alter table profiles enable row level security;
 
 create policy "Public profiles visible"    on profiles for select using (true);
 create policy "Users edit own profile"     on profiles for update using (auth.uid() = id)
-  with check (auth.uid() = id and not is_verified = false);  -- can't self-verify
+  with check (auth.uid() = id);
 create policy "Users insert own profile"   on profiles for insert with check (auth.uid() = id);
 
+create trigger profiles_guard_trust_fields before update on profiles
+  for each row execute function prevent_profile_trust_field_changes();
 create trigger profiles_updated_at before update on profiles
   for each row execute function set_updated_at();
 
@@ -79,6 +237,8 @@ create policy "Public items visible"    on items for select using (available = t
 create policy "Owner sees all items"    on items for select using (auth.uid() = owner_id);
 create policy "Owners manage items"     on items for all using (auth.uid() = owner_id);
 
+create trigger items_guard_moderation_fields before update on items
+  for each row execute function prevent_item_moderation_field_changes();
 create trigger items_updated_at before update on items
   for each row execute function set_updated_at();
 
@@ -159,6 +319,9 @@ create policy "Participants send messages" on messages for insert with check (
 -- Soft delete only — no hard deletes
 create policy "Sender soft-deletes" on messages for update using (auth.uid() = sender_id);
 
+create trigger messages_guard_soft_delete before update on messages
+  for each row execute function enforce_message_soft_delete_only();
+
 create index idx_messages_conv on messages(conversation_id, created_at desc);
 
 -- ─── RENTALS ────────────────────────────────────────────────────────────────
@@ -193,6 +356,8 @@ create policy "Rental parties see rentals"    on rentals for select using (auth.
 create policy "Renters create rentals"        on rentals for insert with check (auth.uid() = renter_id and renter_id <> owner_id);
 create policy "Rental parties update rentals" on rentals for update using (auth.uid() = renter_id or auth.uid() = owner_id);
 
+create trigger rentals_guard_server_fields before update on rentals
+  for each row execute function prevent_rental_server_field_changes();
 create trigger rentals_updated_at before update on rentals
   for each row execute function set_updated_at();
 
@@ -223,6 +388,9 @@ create policy "Renters create contracts"       on rental_contracts
   for insert with check (auth.uid() = renter_id);
 -- No updates or deletes — immutable audit log
 
+create trigger rental_contracts_guard_parties before insert on rental_contracts
+  for each row execute function enforce_contract_matches_rental();
+
 create index idx_contracts_rental on rental_contracts(rental_id);
 
 -- ─── REVIEWS ────────────────────────────────────────────────────────────────
@@ -242,6 +410,9 @@ alter table reviews enable row level security;
 create policy "Reviews are public"       on reviews for select using (true);
 create policy "Reviewers create reviews" on reviews for insert
   with check (auth.uid() = reviewer_id);
+
+create trigger reviews_guard_parties before insert on reviews
+  for each row execute function enforce_review_matches_rental();
 
 create index idx_reviews_reviewee on reviews(reviewee_id);
 
