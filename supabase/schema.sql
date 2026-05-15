@@ -191,10 +191,53 @@ alter table rentals enable row level security;
 
 create policy "Rental parties see rentals"    on rentals for select using (auth.uid() = renter_id or auth.uid() = owner_id);
 create policy "Renters create rentals"        on rentals for insert with check (auth.uid() = renter_id and renter_id <> owner_id);
-create policy "Rental parties update rentals" on rentals for update using (auth.uid() = renter_id or auth.uid() = owner_id);
+create policy "Owners update rental decisions" on rentals for update
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
+
+create or replace function enforce_rental_client_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Payment settlement and lifecycle transitions must be performed by trusted server code.
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+
+  if auth.uid() = old.owner_id
+    and old.status = 'pending'
+    and new.status in ('approved', 'cancelled')
+    and new.id is not distinct from old.id
+    and new.item_id is not distinct from old.item_id
+    and new.renter_id is not distinct from old.renter_id
+    and new.owner_id is not distinct from old.owner_id
+    and new.conversation_id is not distinct from old.conversation_id
+    and new.start_date is not distinct from old.start_date
+    and new.end_date is not distinct from old.end_date
+    and new.total_price is not distinct from old.total_price
+    and new.commission_amount is not distinct from old.commission_amount
+    and new.deposit_amount is not distinct from old.deposit_amount
+    and new.stripe_payment_intent is not distinct from old.stripe_payment_intent
+    and new.stripe_deposit_intent is not distinct from old.stripe_deposit_intent
+    and new.contract_agreed is not distinct from old.contract_agreed
+    and new.contract_agreed_at is not distinct from old.contract_agreed_at
+    and new.return_confirmed_at is not distinct from old.return_confirmed_at
+    and new.deposit_released_at is not distinct from old.deposit_released_at
+    and new.created_at is not distinct from old.created_at then
+    return new;
+  end if;
+
+  raise exception 'rental updates are restricted to trusted payment and workflow handlers';
+end;
+$$;
 
 create trigger rentals_updated_at before update on rentals
   for each row execute function set_updated_at();
+create trigger restrict_rental_client_updates before update on rentals
+  for each row execute function enforce_rental_client_update();
 
 create index idx_rentals_renter on rentals(renter_id);
 create index idx_rentals_owner  on rentals(owner_id);
@@ -220,7 +263,16 @@ alter table rental_contracts enable row level security;
 create policy "Contract parties see contracts" on rental_contracts
   for select using (auth.uid() = renter_id or auth.uid() = owner_id);
 create policy "Renters create contracts"       on rental_contracts
-  for insert with check (auth.uid() = renter_id);
+  for insert with check (
+    auth.uid() = renter_id
+    and exists (
+      select 1
+      from rentals
+      where rentals.id = rental_contracts.rental_id
+        and rentals.renter_id = rental_contracts.renter_id
+        and rentals.owner_id = rental_contracts.owner_id
+    )
+  );
 -- No updates or deletes — immutable audit log
 
 create index idx_contracts_rental on rental_contracts(rental_id);
