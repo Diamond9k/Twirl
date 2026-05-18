@@ -33,7 +33,7 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.twirl",
+          "merchantIdentifier": "merchant.com.twirl.rentals",
           "enableGooglePay": false
         }
       ]

@@ -43,7 +43,7 @@ export default function ItemDetailScreen() {
   const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000));
   const subtotal = (item?.price_per_day ?? 0) * days;
   const fee = Math.round(subtotal * COMMISSION_RATE * 100) / 100;
-  const total = subtotal + fee + (item?.deposit ?? 0);
+  const total = subtotal + fee;
 
   async function handleRentRequest() {
     if (!item || !user) return;
@@ -64,11 +64,18 @@ export default function ItemDetailScreen() {
         start_date: startDate.toISOString().split("T")[0],
         end_date: endDate.toISOString().split("T")[0],
         total_price: total,
+        commission_amount: fee,
+        deposit_amount: item.deposit,
         status: "pending",
         conversation_id: convo?.id,
       }).select().single();
 
-      // Route to contract screen to review terms and pay
+      await supabase.from("messages").insert({
+        conversation_id: convo?.id,
+        sender_id: user.id,
+        content: `Rental request for ${item.title} · ${startDate.toLocaleDateString()} → ${endDate.toLocaleDateString()} · $${total}`,
+      });
+
       router.push(`/contract/${rentalData.id}`);
     } catch (e: any) {
       Alert.alert("Error", e.message);

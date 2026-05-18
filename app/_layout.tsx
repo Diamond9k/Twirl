@@ -47,7 +47,7 @@ export default function RootLayout() {
   }
 
   return (
-    <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!} merchantIdentifier="merchant.com.twirl.app">
+    <StripeProvider publishableKey={process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY!} merchantIdentifier="merchant.com.twirl.rentals">
       <AuthGuard>
         <Stack screenOptions={{ headerShown: false }} />
       </AuthGuard>

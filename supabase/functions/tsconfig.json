@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "lib": ["ESNext"],
+    "types": ["@types/node"]
+  },
+  "exclude": ["node_modules"]
+}

@@ -105,9 +105,16 @@ export default function ConversationScreen() {
       content,
     });
 
+    const isUser1 = meta?.user1_id === user!.id;
+    const unreadCol = isUser1 ? "unread_user2" : "unread_user1";
+    const { data: conv } = await supabase.from("conversations").select(unreadCol).eq("id", id).single();
     await supabase
       .from("conversations")
-      .update({ last_message: content, last_message_at: new Date().toISOString() })
+      .update({
+        last_message: content,
+        last_message_at: new Date().toISOString(),
+        [unreadCol]: ((conv as any)?.[unreadCol] ?? 0) + 1,
+      })
       .eq("id", id);
 
     setSending(false);
