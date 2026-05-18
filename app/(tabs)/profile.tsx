@@ -29,21 +29,21 @@ export default function ProfileScreen() {
   }, [user]);
 
   return (
-    <View className="flex-1 bg-twirl-cream">
+    <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
       <ScrollView>
-        <View className="bg-white px-5 pt-14 pb-6 border-b border-pink-50">
+        <View className="bg-twirl-blush px-5 pt-14 pb-6 border-b border-twirl-line">
           <View className="flex-row items-center gap-4">
-            <View className="w-16 h-16 rounded-full bg-twirl-blush items-center justify-center">
+            <View className="w-16 h-16 rounded-full bg-twirl-paper border border-twirl-line items-center justify-center">
               <Text className="text-3xl">👤</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-twirl-text text-xl font-bold">{profile?.full_name ?? "..."}</Text>
+              <Text className="text-twirl-text text-3xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>{profile?.full_name ?? "..."}</Text>
               <Text className="text-twirl-muted text-sm">{profile?.school}</Text>
               {profile?.sorority ? <Text className="text-twirl-pink text-sm font-medium">{profile.sorority}</Text> : null}
             </View>
-            <TouchableOpacity onPress={signOut} className="bg-pink-50 rounded-xl px-3 py-2">
-              <Text className="text-twirl-pink text-sm">sign out</Text>
+            <TouchableOpacity onPress={signOut} className="bg-twirl-paper border border-twirl-line rounded-xl px-3 py-2">
+              <Text className="text-twirl-ink2 text-sm">sign out</Text>
             </TouchableOpacity>
           </View>
 
@@ -54,9 +54,9 @@ export default function ProfileScreen() {
               { label: "earned", value: `$${profile?.total_earnings ?? 0}` },
               { label: "rating", value: profile?.rating ? `${profile.rating}★` : "—" },
             ].map(stat => (
-              <View key={stat.label} className="flex-1 bg-twirl-blush rounded-2xl py-3 items-center">
-                <Text className="text-twirl-pink font-bold text-base">{stat.value}</Text>
-                <Text className="text-twirl-muted text-xs">{stat.label}</Text>
+              <View key={stat.label} className="flex-1 bg-twirl-paper border border-twirl-line rounded-2xl py-3 items-center">
+                <Text className="text-twirl-text text-base">{stat.value}</Text>
+                <Text className="text-twirl-muted text-[10px] uppercase tracking-[1px]">{stat.label}</Text>
               </View>
             ))}
           </View>
@@ -64,7 +64,7 @@ export default function ProfileScreen() {
 
         <View className="px-5 pt-5">
           <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-twirl-text font-bold text-lg">my closet</Text>
+            <Text className="text-twirl-text text-3xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>my closet</Text>
             <TouchableOpacity onPress={() => router.push("/(tabs)/list")}>
               <Text className="text-twirl-pink font-semibold text-sm">+ add item</Text>
             </TouchableOpacity>

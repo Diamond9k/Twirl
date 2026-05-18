@@ -28,10 +28,13 @@ export default function ContractScreen() {
     if (!agreed) { Alert.alert("Please agree to the rental contract first"); return; }
     setLoading(true);
     try {
-      // Create PaymentIntent with manual capture (holds deposit without charging)
+      const { data: { session } } = await supabase.auth.getSession();
       const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+        },
         body: JSON.stringify({
           rental_id: rental.id,
           amount: Math.round(rental.total_price * 100),
@@ -77,20 +80,20 @@ export default function ContractScreen() {
   const days = Math.ceil((new Date(rental.end_date).getTime() - new Date(rental.start_date).getTime()) / 86400000);
 
   return (
-    <View className="flex-1 bg-twirl-cream">
+    <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
-      <View className="bg-white px-5 pt-14 pb-4 border-b border-pink-50">
+      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
         <TouchableOpacity onPress={() => router.back()}>
           <Text className="text-twirl-muted text-sm mb-2">← back</Text>
         </TouchableOpacity>
-        <Text className="text-2xl font-bold text-twirl-text">rental contract</Text>
+        <Text className="text-5xl text-twirl-text" style={{ fontFamily: "serif", fontStyle: "italic" }}>terms</Text>
         <Text className="text-twirl-muted text-sm mt-1">read & agree before payment</Text>
       </View>
 
       <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingVertical: 20, gap: 16 }}>
         {/* Item summary */}
-        <View className="bg-white rounded-3xl p-4">
-          <Text className="text-twirl-text font-bold text-lg">{item.title}</Text>
+        <View className="bg-twirl-paper border border-twirl-line rounded-2xl p-4">
+          <Text className="text-twirl-text text-2xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>{item.title}</Text>
           <Text className="text-twirl-muted text-sm mt-1">
             {rental.start_date} → {rental.end_date} · {days} days
           </Text>
@@ -113,7 +116,7 @@ export default function ContractScreen() {
         </View>
 
         {/* Contract terms */}
-        <View className="bg-white rounded-3xl p-5">
+        <View className="bg-twirl-paper border border-twirl-line rounded-2xl p-5">
           <Text className="text-twirl-text font-bold text-base mb-4">📋 Rental Agreement</Text>
           {[
             {
@@ -151,7 +154,7 @@ export default function ContractScreen() {
         {/* Agreement checkbox */}
         <TouchableOpacity
           onPress={() => setAgreed(a => !a)}
-          className="bg-white rounded-3xl p-4 flex-row items-start gap-3"
+          className="bg-twirl-paper border border-twirl-line rounded-2xl p-4 flex-row items-start gap-3"
         >
           <View className={`w-6 h-6 rounded-lg border-2 items-center justify-center mt-0.5 ${agreed ? "bg-twirl-pink border-twirl-pink" : "border-pink-200"}`}>
             {agreed && <Text className="text-white text-xs font-bold">✓</Text>}
@@ -166,7 +169,7 @@ export default function ContractScreen() {
           onPress={handleAgreeAndPay}
           disabled={loading || !agreed}
           className="rounded-2xl py-4 items-center mb-8"
-          style={{ backgroundColor: agreed ? "#F472B6" : "#E5E7EB", opacity: loading ? 0.6 : 1 }}
+          style={{ backgroundColor: agreed ? "#2A1F26" : "#E5E7EB", opacity: loading ? 0.6 : 1 }}
         >
           <Text className={`font-bold text-base ${agreed ? "text-white" : "text-gray-400"}`}>
             {loading ? "processing..." : `agree & pay $${rental.total_price}`}

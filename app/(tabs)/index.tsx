@@ -48,33 +48,35 @@ export default function BrowseScreen() {
   useEffect(() => { fetchItems(); }, [search, selectedOccasion, selectedSize]);
 
   return (
-    <View className="flex-1 bg-twirl-cream">
+    <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
-      <View className="bg-white px-5 pt-14 pb-4 shadow-sm">
-        <Text className="text-2xl font-bold text-twirl-text mb-3">twirl <Text className="text-twirl-pink">✨</Text></Text>
+      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
+        <Text className="text-twirl-text mb-2 text-5xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>
+          browse
+        </Text>
         <TextInput
-          className="bg-twirl-blush rounded-2xl px-4 py-3 text-twirl-text text-sm"
+          className="bg-twirl-paper rounded-full px-4 py-3 text-twirl-text text-sm border border-twirl-line"
           placeholder="search dresses, tops, skirts..."
-          placeholderTextColor="#D1B8C5"
+          placeholderTextColor="#A89AA0"
           value={search}
           onChangeText={setSearch}
         />
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 py-3 bg-white border-b border-pink-50" contentContainerStyle={{ gap: 8 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 py-3 bg-twirl-paper" contentContainerStyle={{ gap: 8 }}>
         <TouchableOpacity
           onPress={() => setSelectedOccasion("")}
-          className={`px-4 py-2 rounded-full border ${!selectedOccasion ? "bg-twirl-pink border-twirl-pink" : "bg-white border-pink-200"}`}
+          className={`px-4 py-2 rounded-full border ${!selectedOccasion ? "bg-twirl-text border-twirl-text" : "bg-twirl-paper border-twirl-line"}`}
         >
-          <Text className={`text-sm font-medium ${!selectedOccasion ? "text-white" : "text-twirl-muted"}`}>All</Text>
+          <Text className={`text-xs tracking-[1px] uppercase ${!selectedOccasion ? "text-white" : "text-twirl-ink2"}`}>All</Text>
         </TouchableOpacity>
         {OCCASIONS.map(o => (
           <TouchableOpacity
             key={o}
             onPress={() => setSelectedOccasion(selectedOccasion === o ? "" : o)}
-            className={`px-4 py-2 rounded-full border ${selectedOccasion === o ? "bg-twirl-pink border-twirl-pink" : "bg-white border-pink-200"}`}
+            className={`px-4 py-2 rounded-full border ${selectedOccasion === o ? "bg-twirl-text border-twirl-text" : "bg-twirl-paper border-twirl-line"}`}
           >
-            <Text className={`text-sm font-medium ${selectedOccasion === o ? "text-white" : "text-twirl-muted"}`}>{o}</Text>
+            <Text className={`text-xs tracking-[1px] uppercase ${selectedOccasion === o ? "text-white" : "text-twirl-ink2"}`}>{o}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
@@ -85,7 +87,7 @@ export default function BrowseScreen() {
         numColumns={2}
         contentContainerStyle={{ padding: 12, gap: 8 }}
         columnWrapperStyle={{ gap: 8 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchItems} tintColor="#F472B6" />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchItems} tintColor="#E56A8A" />}
         ListEmptyComponent={
           <View className="flex-1 items-center justify-center pt-20">
             <Text className="text-4xl mb-3">👗</Text>

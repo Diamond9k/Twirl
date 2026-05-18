@@ -19,7 +19,7 @@ export function ItemCard({ item, onPress }: Props) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="bg-white rounded-3xl overflow-hidden shadow-sm"
+      className="bg-twirl-paper rounded-2xl overflow-hidden border border-twirl-line"
       style={{ width: WIDTH }}
       activeOpacity={0.9}
     >
@@ -38,15 +38,20 @@ export function ItemCard({ item, onPress }: Props) {
         </View>
       )}
       <View className="p-3">
-        <Text className="text-twirl-text font-semibold text-sm" numberOfLines={1}>{item.title}</Text>
+        <Text className="text-twirl-text text-base" style={{ fontFamily: "serif", fontStyle: "italic" }} numberOfLines={1}>
+          {item.title}
+        </Text>
         <View className="flex-row items-center justify-between mt-1">
-          <Text className="text-twirl-pink font-bold text-sm">${item.price_per_day}<Text className="text-twirl-muted font-normal text-xs">/day</Text></Text>
-          <View className="bg-twirl-blush rounded-full px-2 py-0.5">
-            <Text className="text-twirl-pink text-xs font-medium">{item.size}</Text>
+          <Text className="text-twirl-text text-sm">
+            ${item.price_per_day}
+            <Text className="text-twirl-muted text-xs">/day</Text>
+          </Text>
+          <View className="bg-twirl-blush rounded-full px-2 py-0.5 border border-twirl-line">
+            <Text className="text-twirl-rose text-xs font-medium">{item.size}</Text>
           </View>
         </View>
         {item.occasion ? (
-          <Text className="text-twirl-muted text-xs mt-1">{item.occasion}</Text>
+          <Text className="text-twirl-muted text-[10px] mt-1 uppercase tracking-[1px]">{item.occasion}</Text>
         ) : null}
       </View>
     </TouchableOpacity>

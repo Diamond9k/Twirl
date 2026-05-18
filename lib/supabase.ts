@@ -1,7 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { createMMKV } from "react-native-mmkv";
-
-const storage = createMMKV();
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 /** Legacy anon JWT (`eyJ…`) or dashboard publishable key (`sb_publishable_…`). */
@@ -18,11 +16,9 @@ if (!supabaseUrl || !supabaseKey) {
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     storage: {
-      getItem: (key) => storage.getString(key) ?? null,
-      setItem: (key, value) => storage.set(key, value),
-      removeItem: (key) => {
-        storage.remove(key);
-      },
+      getItem: (key) => AsyncStorage.getItem(key),
+      setItem: (key, value) => AsyncStorage.setItem(key, value),
+      removeItem: (key) => AsyncStorage.removeItem(key),
     },
     autoRefreshToken: true,
     persistSession: true,

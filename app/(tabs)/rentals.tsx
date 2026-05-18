@@ -36,7 +36,7 @@ export default function RentalsScreen() {
     setLoading(false);
   }
 
-  useFocusEffect(useCallback(() => { fetchRentals(); }, [tab]));
+  useFocusEffect(useCallback(() => { if (user) fetchRentals(); }, [tab, user?.id]));
 
   async function updateStatus(id: string, status: string) {
     await supabase.from("rentals").update({ status }).eq("id", id);
@@ -52,18 +52,18 @@ export default function RentalsScreen() {
   };
 
   return (
-    <View className="flex-1 bg-twirl-cream">
+    <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
-      <View className="bg-white px-5 pt-14 pb-4 border-b border-pink-50">
-        <Text className="text-2xl font-bold text-twirl-text mb-4">my rentals</Text>
-        <View className="flex-row bg-twirl-blush rounded-2xl p-1">
+      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
+        <Text className="text-twirl-text text-5xl mb-3" style={{ fontFamily: "serif", fontStyle: "italic" }}>ledger</Text>
+        <View className="flex-row bg-twirl-paper rounded-xl p-1 border border-twirl-line">
           {(["renting", "lending"] as Tab[]).map(t => (
             <TouchableOpacity
               key={t}
               onPress={() => setTab(t)}
-              className={`flex-1 py-2 rounded-xl items-center ${tab === t ? "bg-white shadow-sm" : ""}`}
+              className={`flex-1 py-2 rounded-lg items-center ${tab === t ? "bg-twirl-blush" : ""}`}
             >
-              <Text className={`font-semibold text-sm ${tab === t ? "text-twirl-pink" : "text-twirl-muted"}`}>{t}</Text>
+              <Text className={`text-xs uppercase tracking-[1px] ${tab === t ? "text-twirl-rose" : "text-twirl-muted"}`}>{t}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -81,7 +81,7 @@ export default function RentalsScreen() {
           </View>
         }
         renderItem={({ item: r }) => (
-          <View className="bg-white rounded-3xl p-4 shadow-sm">
+          <View className="bg-twirl-paper border border-twirl-line rounded-2xl p-4">
             <View className="flex-row gap-3">
               {r.items.images?.[0] ? (
                 <Image source={{ uri: r.items.images[0] }} className="w-16 h-20 rounded-2xl" resizeMode="cover" />
@@ -91,7 +91,9 @@ export default function RentalsScreen() {
                 </View>
               )}
               <View className="flex-1">
-                <Text className="text-twirl-text font-semibold" numberOfLines={1}>{r.items.title}</Text>
+                <Text className="text-twirl-text text-lg" style={{ fontFamily: "serif", fontStyle: "italic" }} numberOfLines={1}>
+                  {r.items.title}
+                </Text>
                 <Text className="text-twirl-muted text-xs mt-0.5">
                   {tab === "renting" ? `from ${r.owner?.full_name}` : `to ${r.renter?.full_name}`}
                 </Text>
@@ -108,7 +110,7 @@ export default function RentalsScreen() {
               <View className="flex-row gap-2 mt-3">
                 <TouchableOpacity
                   onPress={() => updateStatus(r.id, "approved")}
-                  className="flex-1 bg-twirl-pink rounded-xl py-2 items-center"
+                  className="flex-1 bg-twirl-text rounded-xl py-2 items-center"
                 >
                   <Text className="text-white font-semibold text-sm">approve</Text>
                 </TouchableOpacity>

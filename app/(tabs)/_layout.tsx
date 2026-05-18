@@ -5,7 +5,7 @@ function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focu
   return (
     <View className="items-center pt-1">
       <Text style={{ fontSize: 20 }}>{emoji}</Text>
-      <Text className={`text-xs mt-0.5 ${focused ? "text-twirl-pink font-semibold" : "text-twirl-muted"}`}>
+      <Text className={`text-[10px] mt-0.5 uppercase tracking-[1px] ${focused ? "text-twirl-text font-semibold" : "text-twirl-muted"}`}>
         {label}
       </Text>
     </View>
@@ -18,8 +18,8 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#FDE8EF",
+          backgroundColor: "#FDFAF4",
+          borderTopColor: "#E8DDD4",
           borderTopWidth: 1,
           height: 70,
           paddingBottom: 8,

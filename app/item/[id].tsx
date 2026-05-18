@@ -77,13 +77,13 @@ export default function ItemDetailScreen() {
   }
 
   if (!item) return (
-    <View className="flex-1 bg-twirl-cream items-center justify-center">
+    <View className="flex-1 bg-twirl-paper items-center justify-center">
       <Text className="text-twirl-muted">loading...</Text>
     </View>
   );
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1 bg-twirl-paper">
       <StatusBar style="light" />
       <ScrollView>
         <View style={{ position: "relative" }}>
@@ -115,14 +115,14 @@ export default function ItemDetailScreen() {
           )}
         </View>
 
-        <View className="px-5 pt-5 pb-32">
+          <View className="px-5 pt-5 pb-32">
           <View className="flex-row items-start justify-between">
             <View className="flex-1">
-              <Text className="text-twirl-text text-2xl font-bold">{item.title}</Text>
-              <Text className="text-twirl-muted text-sm mt-1">{item.category} · {item.occasion}</Text>
+              <Text className="text-twirl-text text-4xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>{item.title}</Text>
+              <Text className="text-twirl-muted text-[10px] uppercase tracking-[1px] mt-1">{item.category} · {item.occasion}</Text>
             </View>
             <View className="items-end">
-              <Text className="text-twirl-pink font-bold text-xl">${item.price_per_day}</Text>
+              <Text className="text-twirl-text text-2xl">${item.price_per_day}</Text>
               <Text className="text-twirl-muted text-xs">per day</Text>
             </View>
           </View>
@@ -142,7 +142,7 @@ export default function ItemDetailScreen() {
             <Text className="text-twirl-muted text-sm mt-4 leading-5">{item.description}</Text>
           ) : null}
 
-          <View className="bg-twirl-blush rounded-3xl p-4 mt-4 flex-row items-center gap-3">
+          <View className="bg-twirl-cream border border-twirl-line rounded-2xl p-4 mt-4 flex-row items-center gap-3">
             <View className="w-10 h-10 rounded-full bg-white items-center justify-center">
               <Text>👤</Text>
             </View>
@@ -211,11 +211,11 @@ export default function ItemDetailScreen() {
       </ScrollView>
 
       {item.owner_id !== user?.id && item.available && (
-        <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-pink-50 px-5 py-4 pb-8">
+        <View className="absolute bottom-0 left-0 right-0 bg-twirl-paper border-t border-twirl-line px-5 py-4 pb-8">
           <TouchableOpacity
             onPress={handleRentRequest}
             disabled={loading}
-            className="bg-twirl-pink rounded-2xl py-4 items-center"
+            className="bg-twirl-text rounded-xl py-4 items-center"
             style={{ opacity: loading ? 0.6 : 1 }}
           >
             <Text className="text-white font-bold text-base">

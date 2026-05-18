@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert, Platform } from "react-native";
-import { Picker } from "@react-native-picker/picker";
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Alert } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
@@ -20,6 +19,10 @@ export default function ListItemScreen() {
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const cycleValue = (values: string[], current: string) => {
+    const index = values.indexOf(current);
+    return values[(index + 1) % values.length];
+  };
 
   async function pickImages() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -73,11 +76,11 @@ export default function ListItemScreen() {
   }
 
   return (
-    <View className="flex-1 bg-twirl-cream">
+    <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
-      <View className="bg-white px-5 pt-14 pb-4 border-b border-pink-50">
-        <Text className="text-2xl font-bold text-twirl-text">list an item</Text>
-        <Text className="text-twirl-muted text-sm mt-1">earn money from your closet</Text>
+      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
+        <Text className="text-twirl-text text-5xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>new listing</Text>
+        <Text className="text-twirl-muted text-sm mt-1">lend a piece</Text>
       </View>
 
       <ScrollView className="flex-1 px-5" contentContainerStyle={{ paddingVertical: 20, gap: 16 }}>
@@ -105,9 +108,9 @@ export default function ListItemScreen() {
         </View>
 
         <View>
-          <Text className="text-twirl-text font-semibold mb-2">item name <Text className="text-twirl-pink">*</Text></Text>
+          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Item name</Text>
           <TextInput
-            className="bg-white border border-pink-100 rounded-2xl px-4 py-3 text-twirl-text"
+            className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3 text-twirl-text"
             placeholder="e.g. Pink Sequin Mini Dress"
             placeholderTextColor="#D1D5DB"
             value={title}
@@ -116,9 +119,9 @@ export default function ListItemScreen() {
         </View>
 
         <View>
-          <Text className="text-twirl-text font-semibold mb-2">description</Text>
+          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Description</Text>
           <TextInput
-            className="bg-white border border-pink-100 rounded-2xl px-4 py-3 text-twirl-text"
+            className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3 text-twirl-text"
             placeholder="brand, condition, fit notes..."
             placeholderTextColor="#D1D5DB"
             value={description}
@@ -130,8 +133,8 @@ export default function ListItemScreen() {
 
         <View className="flex-row gap-3">
           <View className="flex-1">
-            <Text className="text-twirl-text font-semibold mb-2">price/day <Text className="text-twirl-pink">*</Text></Text>
-            <View className="flex-row items-center bg-white border border-pink-100 rounded-2xl px-4">
+            <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Price/day</Text>
+            <View className="flex-row items-center bg-twirl-paper border border-twirl-line rounded-xl px-4">
               <Text className="text-twirl-muted">$</Text>
               <TextInput
                 className="flex-1 py-3 text-twirl-text ml-1"
@@ -144,8 +147,8 @@ export default function ListItemScreen() {
             </View>
           </View>
           <View className="flex-1">
-            <Text className="text-twirl-text font-semibold mb-2">deposit</Text>
-            <View className="flex-row items-center bg-white border border-pink-100 rounded-2xl px-4">
+            <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Deposit</Text>
+            <View className="flex-row items-center bg-twirl-paper border border-twirl-line rounded-xl px-4">
               <Text className="text-twirl-muted">$</Text>
               <TextInput
                 className="flex-1 py-3 text-twirl-text ml-1"
@@ -160,36 +163,30 @@ export default function ListItemScreen() {
         </View>
 
         <View>
-          <Text className="text-twirl-text font-semibold mb-2">size</Text>
-          <View className="bg-white border border-pink-100 rounded-2xl overflow-hidden">
-            <Picker selectedValue={size} onValueChange={setSize} style={{ color: "#1C1024" }}>
-              {SIZES.map(s => <Picker.Item key={s} label={s} value={s} />)}
-            </Picker>
-          </View>
+          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Size</Text>
+          <TouchableOpacity onPress={() => setSize(cycleValue(SIZES, size))} className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3">
+            <Text className="text-twirl-text">{size}</Text>
+          </TouchableOpacity>
         </View>
 
         <View>
-          <Text className="text-twirl-text font-semibold mb-2">occasion</Text>
-          <View className="bg-white border border-pink-100 rounded-2xl overflow-hidden">
-            <Picker selectedValue={occasion} onValueChange={setOccasion} style={{ color: "#1C1024" }}>
-              {OCCASIONS.map(o => <Picker.Item key={o} label={o} value={o} />)}
-            </Picker>
-          </View>
+          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Occasion</Text>
+          <TouchableOpacity onPress={() => setOccasion(cycleValue(OCCASIONS, occasion))} className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3">
+            <Text className="text-twirl-text">{occasion}</Text>
+          </TouchableOpacity>
         </View>
 
         <View>
-          <Text className="text-twirl-text font-semibold mb-2">category</Text>
-          <View className="bg-white border border-pink-100 rounded-2xl overflow-hidden">
-            <Picker selectedValue={category} onValueChange={setCategory} style={{ color: "#1C1024" }}>
-              {CATEGORIES.map(c => <Picker.Item key={c} label={c} value={c} />)}
-            </Picker>
-          </View>
+          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Category</Text>
+          <TouchableOpacity onPress={() => setCategory(cycleValue(CATEGORIES, category))} className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3">
+            <Text className="text-twirl-text">{category}</Text>
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
           onPress={handleSubmit}
           disabled={loading}
-          className="bg-twirl-pink rounded-2xl py-4 items-center mb-8"
+          className="bg-twirl-text rounded-xl py-4 items-center mb-8"
           style={{ opacity: loading ? 0.6 : 1 }}
         >
           <Text className="text-white font-bold text-base">
