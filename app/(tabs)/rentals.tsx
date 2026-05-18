@@ -107,19 +107,8 @@ export default function RentalsScreen() {
               </View>
             </View>
             {tab === "lending" && r.status === "pending" && (
-              <View className="flex-row gap-2 mt-3">
-                <TouchableOpacity
-                  onPress={() => updateStatus(r.id, "approved")}
-                  className="flex-1 bg-twirl-text rounded-xl py-2 items-center"
-                >
-                  <Text className="text-white font-semibold text-sm">approve</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => updateStatus(r.id, "cancelled")}
-                  className="flex-1 bg-pink-50 border border-pink-200 rounded-xl py-2 items-center"
-                >
-                  <Text className="text-twirl-pink font-semibold text-sm">decline</Text>
-                </TouchableOpacity>
+              <View className="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2">
+                <Text className="text-yellow-700 text-xs text-center">awaiting payment from renter</Text>
               </View>
             )}
           </View>
