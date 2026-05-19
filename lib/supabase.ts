@@ -5,17 +5,18 @@ const storage = createMMKV();
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 /** Legacy anon JWT (`eyJ…`) or dashboard publishable key (`sb_publishable_…`). */
-const supabaseKey =
+export const supabaseApiKey =
   process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
   process.env.EXPO_PUBLIC_SUPABASE_KEY;
 
-if (!supabaseUrl || !supabaseKey) {
+if (!supabaseUrl || !supabaseApiKey) {
   throw new Error(
-    "Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY or EXPO_PUBLIC_SUPABASE_KEY in .env"
+    "Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY or EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env"
   );
 }
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
+export const supabase = createClient(supabaseUrl, supabaseApiKey, {
   auth: {
     storage: {
       getItem: (key) => storage.getString(key) ?? null,
