@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Alert, Image } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { supabase } from "@/lib/supabase";
+import { supabase, supabaseApiKey } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useStripe } from "@stripe/stripe-react-native";
 import { StatusBar } from "expo-status-bar";
@@ -28,17 +28,36 @@ export default function ContractScreen() {
     if (!agreed) { Alert.alert("Please agree to the rental contract first"); return; }
     setLoading(true);
     try {
+      const apiBaseUrl = process.env.EXPO_PUBLIC_API_URL;
+      if (!apiBaseUrl) throw new Error("Set EXPO_PUBLIC_API_URL before starting checkout.");
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(sessionError.message);
+      if (!sessionData.session?.access_token) throw new Error("Please sign in again before paying.");
+
       // Create PaymentIntent with manual capture (holds deposit without charging)
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
+      const response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}/create-payment-intent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          apikey: supabaseApiKey,
+          Authorization: `Bearer ${sessionData.session.access_token}`,
+        },
         body: JSON.stringify({
           rental_id: rental.id,
           amount: Math.round(rental.total_price * 100),
           deposit: Math.round(rental.items.deposit * 100),
         }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const paymentIntentResponse = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(paymentIntentResponse?.error || paymentIntentResponse?.message || "Unable to start payment.");
+      }
+
+      const { paymentIntentClientSecret, depositIntentClientSecret } = paymentIntentResponse ?? {};
+      if (!paymentIntentClientSecret) {
+        throw new Error("Payment service did not return a PaymentIntent client secret.");
+      }
 
       // Init payment sheet
       const { error: initError } = await initPaymentSheet({
@@ -54,7 +73,7 @@ export default function ContractScreen() {
       if (presentError) throw new Error(presentError.message);
 
       // Log contract agreement
-      await supabase.from("rental_contracts").insert({
+      const { error: contractError } = await supabase.from("rental_contracts").insert({
         rental_id: rental.id,
         renter_id: user!.id,
         owner_id: rental.items.owner_id,
@@ -62,8 +81,10 @@ export default function ContractScreen() {
         deposit_intent_id: depositIntentClientSecret?.split("_secret")[0],
         terms_version: "1.0",
       });
+      if (contractError) throw new Error(contractError.message);
 
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", id);
+      const { error: rentalError } = await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", id);
+      if (rentalError) throw new Error(rentalError.message);
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Payment failed", e.message);
