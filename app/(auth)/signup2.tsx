@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -17,15 +17,16 @@ export default function Signup2Screen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ email?: string; password?: string }>();
   const [step, setStep] = useState(0);
-  const [name, setName] = useState("Margaux Ellery");
+  const [name, setName] = useState("");
   const [year, setYear] = useState("'27");
-  const [major, setMajor] = useState("Marketing");
-  const [hometown, setHometown] = useState("Little Rock, AR");
+  const [major, setMajor] = useState("");
+  const [hometown, setHometown] = useState("");
   const [letters, setLetters] = useState("ΚΚΓ");
   const [size, setSize] = useState("S");
-  const [bio, setBio] = useState("Pinterest-saved everything. Pearl-loving. Will trade my closet for yours.");
+  const [bio, setBio] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const pendingRef = useRef(false);
 
   async function sleep(ms: number) {
     await new Promise((resolve) => setTimeout(resolve, ms));
@@ -73,6 +74,8 @@ export default function Signup2Screen() {
   }
 
   async function finishSignup() {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setLoading(true);
     setError("");
     try {
@@ -126,6 +129,7 @@ export default function Signup2Screen() {
 
       setError(formatSignupError(e));
     } finally {
+      pendingRef.current = false;
       setLoading(false);
     }
   }

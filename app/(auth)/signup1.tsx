@@ -10,7 +10,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function Signup1Screen() {
   const router = useRouter();
-  const [emailLocal, setEmailLocal] = useState("margaux");
+  const [emailLocal, setEmailLocal] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
