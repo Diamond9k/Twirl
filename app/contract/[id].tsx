@@ -28,16 +28,28 @@ export default function ContractScreen() {
     if (!agreed) { Alert.alert("Please agree to the rental contract first"); return; }
     setLoading(true);
     try {
+      const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+      if (!apiUrl) throw new Error("Set EXPO_PUBLIC_API_URL in .env");
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error("Sign in again to continue payment");
+
       // Create PaymentIntent with manual capture (holds deposit without charging)
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
+      const response = await fetch(`${apiUrl}/create-payment-intent`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           rental_id: rental.id,
           amount: Math.round(rental.total_price * 100),
           deposit: Math.round(rental.items.deposit * 100),
         }),
       });
+      if (!response.ok) {
+        throw new Error(await response.text() || "Unable to create payment");
+      }
       const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
 
       // Init payment sheet
