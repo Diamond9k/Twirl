@@ -4,10 +4,17 @@ import { createMMKV } from "react-native-mmkv";
 const storage = createMMKV();
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-/** Legacy anon JWT (`eyJ…`) or dashboard publishable key (`sb_publishable_…`). */
+const placeholderValues = new Set(["your-anon-jwt", "sb_publishable_xxx"]);
+
+function configuredEnv(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && !placeholderValues.has(trimmed) ? trimmed : undefined;
+}
+
+/** Prefer dashboard publishable keys, with legacy anon JWT as a fallback. */
 const supabaseKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.EXPO_PUBLIC_SUPABASE_KEY;
+  configuredEnv(process.env.EXPO_PUBLIC_SUPABASE_KEY) ||
+  configuredEnv(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY);
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error(
