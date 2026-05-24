@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl } from "react-native";
+import { useState, useCallback } from "react";
+import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl, Alert, ActivityIndicator } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,6 +11,9 @@ type Rental = {
   start_date: string;
   end_date: string;
   total_price: number;
+  deposit_amount: number;
+  stripe_payment_intent: string | null;
+  stripe_deposit_intent: string | null;
   items: { title: string; images: string[]; price_per_day: number };
   renter: { full_name: string };
   owner: { full_name: string };
@@ -18,11 +21,24 @@ type Rental = {
 
 type Tab = "renting" | "lending";
 
+const COLORS = {
+  paper:    "#FDFAF4",
+  blush:    "#F7E4DE",
+  line:     "#E8DDD4",
+  ink:      "#2A1F26",
+  ink2:     "#5A4A54",
+  muted:    "#A89AA0",
+  rose:     "#E56A8A",
+  roseDeep: "#B84565",
+  text:     "#2A1F26",
+};
+
 export default function RentalsScreen() {
   const { user } = useAuth();
   const [tab, setTab] = useState<Tab>("renting");
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   async function fetchRentals() {
     setLoading(true);
@@ -43,28 +59,176 @@ export default function RentalsScreen() {
     fetchRentals();
   }
 
-  const statusColor: Record<string, string> = {
-    pending: "bg-yellow-100 text-yellow-700",
-    approved: "bg-green-100 text-green-700",
-    paid: "bg-green-100 text-green-700",
-    active: "bg-blue-100 text-blue-700",
-    completed: "bg-gray-100 text-gray-600",
-    cancelled: "bg-red-100 text-red-600",
+  async function confirmAction(title: string, message: string, action: () => Promise<void>) {
+    return new Promise<void>((resolve) => {
+      Alert.alert(title, message, [
+        { text: "Cancel", style: "cancel", onPress: () => resolve() },
+        {
+          text: "Confirm",
+          style: "destructive",
+          onPress: async () => {
+            await action();
+            resolve();
+          },
+        },
+      ]);
+    });
+  }
+
+  async function handleApprove(rental: Rental) {
+    await confirmAction("Approve Request", `Approve rental for ${rental.renter?.full_name}? They'll receive a payment link.`, async () => {
+      setActionLoading(rental.id);
+      await updateStatus(rental.id, "approved");
+      setActionLoading(null);
+    });
+  }
+
+  async function handleDecline(rental: Rental) {
+    await confirmAction("Decline Request", "Decline this rental request?", async () => {
+      setActionLoading(rental.id);
+      await updateStatus(rental.id, "cancelled");
+      setActionLoading(null);
+    });
+  }
+
+  async function handleConfirmHandoff(rental: Rental) {
+    await confirmAction("Confirm Handoff", "You've given the item to the renter?", async () => {
+      setActionLoading(rental.id);
+      await updateStatus(rental.id, "active");
+      setActionLoading(null);
+    });
+  }
+
+  async function handleConfirmReturn(rental: Rental) {
+    await confirmAction(
+      "Confirm Return",
+      "Item returned in good condition? This will charge the renter and release their deposit.",
+      async () => {
+        setActionLoading(rental.id);
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
+          const res = await fetch(`${apiUrl}/functions/v1/release-deposit`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${session?.access_token}`,
+            },
+            body: JSON.stringify({ rental_id: rental.id }),
+          });
+          const body = await res.json();
+          if (!res.ok) throw new Error(body.error ?? "Failed");
+          fetchRentals();
+        } catch (err: any) {
+          Alert.alert("Error", err.message ?? "Could not complete return. Try again.");
+        } finally {
+          setActionLoading(null);
+        }
+      }
+    );
+  }
+
+  const statusColor: Record<string, { bg: string; text: string }> = {
+    pending:   { bg: "#FEF3C7", text: "#92400E" },
+    approved:  { bg: "#D1FAE5", text: "#065F46" },
+    paid:      { bg: "#D1FAE5", text: "#065F46" },
+    active:    { bg: "#DBEAFE", text: "#1E40AF" },
+    completed: { bg: "#F3F4F6", text: "#6B7280" },
+    cancelled: { bg: "#FEE2E2", text: "#991B1B" },
+    disputed:  { bg: "#FEE2E2", text: "#991B1B" },
   };
 
+  function renderActions(rental: Rental, isLending: boolean) {
+    const isActing = actionLoading === rental.id;
+
+    if (isActing) {
+      return (
+        <View style={{ marginTop: 10, alignItems: "center" }}>
+          <ActivityIndicator size="small" color={COLORS.rose} />
+        </View>
+      );
+    }
+
+    // LENDING (owner) actions
+    if (isLending) {
+      if (rental.status === "pending") {
+        return (
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+            <TouchableOpacity
+              onPress={() => handleDecline(rental)}
+              style={{ flex: 1, paddingVertical: 10, borderRadius: 12, backgroundColor: COLORS.blush, borderWidth: 1, borderColor: COLORS.line, alignItems: "center" }}
+            >
+              <Text style={{ color: COLORS.ink2, fontSize: 12, letterSpacing: 1, fontWeight: "600" }}>DECLINE</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleApprove(rental)}
+              style={{ flex: 2, paddingVertical: 10, borderRadius: 12, backgroundColor: COLORS.rose, alignItems: "center" }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12, letterSpacing: 1, fontWeight: "600" }}>APPROVE</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+
+      if (rental.status === "paid") {
+        return (
+          <TouchableOpacity
+            onPress={() => handleConfirmHandoff(rental)}
+            style={{ marginTop: 10, paddingVertical: 10, borderRadius: 12, backgroundColor: COLORS.ink, alignItems: "center" }}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, letterSpacing: 1, fontWeight: "600" }}>CONFIRM HANDOFF</Text>
+          </TouchableOpacity>
+        );
+      }
+
+      if (rental.status === "active") {
+        return (
+          <TouchableOpacity
+            onPress={() => handleConfirmReturn(rental)}
+            style={{ marginTop: 10, paddingVertical: 10, borderRadius: 12, backgroundColor: "#065F46", alignItems: "center" }}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, letterSpacing: 1, fontWeight: "600" }}>CONFIRM RETURN & RELEASE DEPOSIT</Text>
+          </TouchableOpacity>
+        );
+      }
+    }
+
+    // RENTING (renter) info states
+    if (!isLending) {
+      if (rental.status === "approved") {
+        return (
+          <View style={{ marginTop: 10, backgroundColor: "#D1FAE5", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}>
+            <Text style={{ color: "#065F46", fontSize: 12, textAlign: "center" }}>Approved — complete payment to confirm</Text>
+          </View>
+        );
+      }
+      if (rental.status === "paid") {
+        return (
+          <View style={{ marginTop: 10, backgroundColor: "#FEF3C7", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}>
+            <Text style={{ color: "#92400E", fontSize: 12, textAlign: "center" }}>Waiting for owner to confirm handoff</Text>
+          </View>
+        );
+      }
+    }
+
+    return null;
+  }
+
   return (
-    <View className="flex-1 bg-twirl-paper">
+    <View style={{ flex: 1, backgroundColor: COLORS.paper }}>
       <StatusBar style="dark" />
-      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
-        <Text className="text-twirl-text text-5xl mb-3" style={{ fontFamily: "serif", fontStyle: "italic" }}>ledger</Text>
-        <View className="flex-row bg-twirl-paper rounded-xl p-1 border border-twirl-line">
+      <View style={{ backgroundColor: COLORS.blush, paddingHorizontal: 20, paddingTop: 56, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.line }}>
+        <Text style={{ color: COLORS.text, fontSize: 48, marginBottom: 12, fontFamily: "CormorantGaramond_500Medium_Italic", fontStyle: "italic" }}>ledger</Text>
+        <View style={{ flexDirection: "row", backgroundColor: COLORS.paper, borderRadius: 12, padding: 4, borderWidth: 1, borderColor: COLORS.line }}>
           {(["renting", "lending"] as Tab[]).map(t => (
             <TouchableOpacity
               key={t}
               onPress={() => setTab(t)}
-              className={`flex-1 py-2 rounded-lg items-center ${tab === t ? "bg-twirl-blush" : ""}`}
+              style={{ flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: "center", backgroundColor: tab === t ? COLORS.blush : "transparent" }}
             >
-              <Text className={`text-xs uppercase tracking-[1px] ${tab === t ? "text-twirl-rose" : "text-twirl-muted"}`}>{t}</Text>
+              <Text style={{ fontSize: 11, letterSpacing: 1, textTransform: "uppercase", color: tab === t ? COLORS.rose : COLORS.muted }}>
+                {t}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -73,45 +237,41 @@ export default function RentalsScreen() {
       <FlatList
         data={rentals}
         keyExtractor={r => r.id}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchRentals} tintColor="#F472B6" />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchRentals} tintColor={COLORS.rose} />}
         contentContainerStyle={{ padding: 16, gap: 12 }}
         ListEmptyComponent={
-          <View className="items-center pt-20">
-            <Text className="text-4xl mb-3">📦</Text>
-            <Text className="text-twirl-muted">no {tab === "renting" ? "rentals" : "lending"} yet</Text>
+          <View style={{ alignItems: "center", paddingTop: 80 }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>📦</Text>
+            <Text style={{ color: COLORS.muted }}>no {tab === "renting" ? "rentals" : "lending"} yet</Text>
           </View>
         }
         renderItem={({ item: r }) => (
-          <View className="bg-twirl-paper border border-twirl-line rounded-2xl p-4">
-            <View className="flex-row gap-3">
+          <View style={{ backgroundColor: COLORS.paper, borderWidth: 1, borderColor: COLORS.line, borderRadius: 16, padding: 16 }}>
+            <View style={{ flexDirection: "row", gap: 12 }}>
               {r.items.images?.[0] ? (
-                <Image source={{ uri: r.items.images[0] }} className="w-16 h-20 rounded-2xl" resizeMode="cover" />
+                <Image source={{ uri: r.items.images[0] }} style={{ width: 64, height: 80, borderRadius: 16 }} resizeMode="cover" />
               ) : (
-                <View className="w-16 h-20 rounded-2xl bg-twirl-blush items-center justify-center">
+                <View style={{ width: 64, height: 80, borderRadius: 16, backgroundColor: COLORS.blush, alignItems: "center", justifyContent: "center" }}>
                   <Text>👗</Text>
                 </View>
               )}
-              <View className="flex-1">
-                <Text className="text-twirl-text text-lg" style={{ fontFamily: "serif", fontStyle: "italic" }} numberOfLines={1}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: COLORS.text, fontSize: 18, fontFamily: "CormorantGaramond_500Medium_Italic", fontStyle: "italic" }} numberOfLines={1}>
                   {r.items.title}
                 </Text>
-                <Text className="text-twirl-muted text-xs mt-0.5">
+                <Text style={{ color: COLORS.muted, fontSize: 11, marginTop: 2 }}>
                   {tab === "renting" ? `from ${r.owner?.full_name}` : `to ${r.renter?.full_name}`}
                 </Text>
-                <Text className="text-twirl-muted text-xs mt-1">{r.start_date} → {r.end_date}</Text>
-                <View className="flex-row items-center justify-between mt-2">
-                  <Text className="text-twirl-pink font-bold">${r.total_price}</Text>
-                  <View className={`rounded-full px-3 py-1 ${statusColor[r.status]?.split(" ")[0] ?? "bg-gray-100"}`}>
-                    <Text className={`text-xs font-medium ${statusColor[r.status]?.split(" ")[1] ?? "text-gray-600"}`}>{r.status}</Text>
+                <Text style={{ color: COLORS.muted, fontSize: 11, marginTop: 4 }}>{r.start_date} → {r.end_date}</Text>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+                  <Text style={{ color: COLORS.rose, fontWeight: "700" }}>${r.total_price}</Text>
+                  <View style={{ borderRadius: 20, paddingHorizontal: 10, paddingVertical: 3, backgroundColor: (statusColor[r.status] ?? { bg: "#F3F4F6" }).bg }}>
+                    <Text style={{ fontSize: 11, fontWeight: "600", color: (statusColor[r.status] ?? { text: "#6B7280" }).text }}>{r.status}</Text>
                   </View>
                 </View>
               </View>
             </View>
-            {tab === "lending" && r.status === "pending" && (
-              <View className="mt-3 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2">
-                <Text className="text-yellow-700 text-xs text-center">awaiting payment from renter</Text>
-              </View>
-            )}
+            {renderActions(r, tab === "lending")}
           </View>
         )}
       />

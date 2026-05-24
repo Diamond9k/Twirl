@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, Text, TextInput, View, Image, TouchableOpacity } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import * as ImagePicker from "expo-image-picker";
 import { CornerOrnament } from "@/components/twirl/CornerOrnament";
 import { StepDots } from "@/components/twirl/StepDots";
 import { Button } from "@/components/twirl/Button";
@@ -24,9 +25,40 @@ export default function Signup2Screen() {
   const [letters, setLetters] = useState("ΚΚΓ");
   const [size, setSize] = useState("S");
   const [bio, setBio] = useState("");
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const pendingRef = useRef(false);
+
+  async function pickAvatar() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setAvatarUri(result.assets[0].uri);
+    }
+  }
+
+  async function uploadAvatar(userId: string): Promise<string | null> {
+    if (!avatarUri) return null;
+    try {
+      const response = await fetch(avatarUri);
+      const blob = await response.blob();
+      const path = `${userId}/avatar.jpg`;
+      const { error } = await supabase.storage.from("item-images").upload(path, blob, {
+        contentType: "image/jpeg",
+        upsert: true,
+      });
+      if (error) throw error;
+      const { data } = supabase.storage.from("item-images").getPublicUrl(path);
+      return data.publicUrl;
+    } catch {
+      return null;
+    }
+  }
 
   async function sleep(ms: number) {
     await new Promise((resolve) => setTimeout(resolve, ms));
@@ -85,6 +117,7 @@ export default function Signup2Screen() {
       if (signError) throw signError;
       const resolvedUser = data.user ?? null;
       if (resolvedUser) {
+        const avatar_url = await uploadAvatar(resolvedUser.id);
         const { error: profileErr } = await supabase.from("profiles").upsert({
           id: resolvedUser.id,
           email,
@@ -96,6 +129,7 @@ export default function Signup2Screen() {
           year,
           major,
           hometown,
+          ...(avatar_url ? { avatar_url } : {}),
         });
         if (profileErr) throw profileErr;
       }
@@ -108,6 +142,7 @@ export default function Signup2Screen() {
       if (isRetryableTimeoutError(e) && email && password) {
         const signIn = await supabase.auth.signInWithPassword({ email, password });
         if (!signIn.error && signIn.data.user) {
+          const avatar_url = await uploadAvatar(signIn.data.user.id);
           const { error: profileErr } = await supabase.from("profiles").upsert({
             id: signIn.data.user.id,
             email,
@@ -119,6 +154,7 @@ export default function Signup2Screen() {
             year,
             major,
             hometown,
+            ...(avatar_url ? { avatar_url } : {}),
           });
           if (!profileErr) {
             router.replace("/(tabs)/");
@@ -171,11 +207,27 @@ export default function Signup2Screen() {
 
         <View className="px-6 flex-1">
           {step === 0 ? (
-            <View className="items-center pt-6">
-              <View className="w-[200px] h-[200px] rounded-full bg-twirl-paper border border-twirl-line items-center justify-center">
-                <Text className="text-twirl-muted text-5xl">👤</Text>
-              </View>
-              <Text className="text-twirl-ink2 mt-3">Tap to add photo</Text>
+            <View style={{ alignItems: "center", paddingTop: 24 }}>
+              <TouchableOpacity onPress={pickAvatar} activeOpacity={0.8}>
+                {avatarUri ? (
+                  <Image
+                    source={{ uri: avatarUri }}
+                    style={{ width: 200, height: 200, borderRadius: 100 }}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={{ width: 200, height: 200, borderRadius: 100, backgroundColor: "#FDFAF4", borderWidth: 1, borderColor: "#E8DDD4", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 56 }}>👤</Text>
+                  </View>
+                )}
+                <View style={{ position: "absolute", bottom: 8, right: 8, width: 36, height: 36, borderRadius: 18, backgroundColor: "#E56A8A", alignItems: "center", justifyContent: "center" }}>
+                  <Text style={{ color: "#fff", fontSize: 18 }}>+</Text>
+                </View>
+              </TouchableOpacity>
+              <Text style={{ color: "#5A4A54", marginTop: 12, fontSize: 13 }}>
+                {avatarUri ? "Tap to change photo" : "Tap to add photo"}
+              </Text>
+              <Text style={{ color: "#A89AA0", marginTop: 4, fontSize: 11 }}>You can skip this for now</Text>
             </View>
           ) : null}
 
