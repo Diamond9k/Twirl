@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.twirl.rentals"
+      "bundleIdentifier": "twirl.rentals",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -33,10 +36,17 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.twirl.rentals",
+          "merchantIdentifier": "merchant.twirl.rentals",
           "enableGooglePay": false
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c65a84e0-9ea3-4bbb-aa05-9706cb442756"
+      }
+    },
+    "owner": "jimbo36"
   }
 }

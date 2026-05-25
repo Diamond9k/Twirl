@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, ScrollView, FlatList } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, FlatList, Linking, Alert } from "react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { ItemCard } from "@/components/cards/ItemCard";
@@ -14,6 +14,7 @@ type Profile = {
   rating: number;
   total_rentals: number;
   total_earnings: number;
+  stripe_account_id: string | null;
 };
 
 export default function ProfileScreen() {
@@ -21,6 +22,29 @@ export default function ProfileScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [myItems, setMyItems] = useState<any[]>([]);
+  const [connectLoading, setConnectLoading] = useState(false);
+
+  async function setupPayouts() {
+    setConnectLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { Alert.alert("Error", "Not logged in"); return; }
+      const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-connect-account`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token}`,
+        },
+      });
+      const { url, error } = await res.json();
+      if (error) throw new Error(error);
+      await Linking.openURL(url);
+    } catch (err: any) {
+      Alert.alert("Error", err.message ?? "Could not open payout setup");
+    } finally {
+      setConnectLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!user) return;
@@ -38,7 +62,7 @@ export default function ProfileScreen() {
               <Text className="text-3xl">👤</Text>
             </View>
             <View className="flex-1">
-              <Text className="text-twirl-text text-3xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>{profile?.full_name ?? "..."}</Text>
+              <Text className="text-twirl-text text-3xl" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>{profile?.full_name ?? "..."}</Text>
               <Text className="text-twirl-muted text-sm">{profile?.school}</Text>
               {profile?.sorority ? <Text className="text-twirl-pink text-sm font-medium">{profile.sorority}</Text> : null}
             </View>
@@ -62,9 +86,23 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        {!profile?.stripe_account_id && (
+          <TouchableOpacity
+            onPress={setupPayouts}
+            disabled={connectLoading}
+            className="mx-5 mt-4 bg-twirl-blush border border-twirl-line rounded-2xl px-4 py-3 flex-row items-center justify-between"
+          >
+            <View>
+              <Text className="text-twirl-text font-semibold text-sm">set up payouts</Text>
+              <Text className="text-twirl-muted text-xs mt-0.5">connect your bank to get paid</Text>
+            </View>
+            <Text className="text-twirl-pink font-bold text-lg">→</Text>
+          </TouchableOpacity>
+        )}
+
         <View className="px-5 pt-5">
           <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-twirl-text text-3xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>my closet</Text>
+            <Text className="text-twirl-text text-3xl" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>my closet</Text>
             <TouchableOpacity onPress={() => router.push("/(tabs)/list")}>
               <Text className="text-twirl-pink font-semibold text-sm">+ add item</Text>
             </TouchableOpacity>

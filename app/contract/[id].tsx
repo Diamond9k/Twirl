@@ -4,16 +4,79 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useStripe } from "@stripe/stripe-react-native";
+import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
+
+const isExpoGo = Constants.appOwnership === "expo";
+
+type PayButtonProps = { agreed: boolean; loading: boolean; totalPrice: number; onPress: () => void };
+
+function StripePayButton({ agreed, loading, totalPrice, onPress }: PayButtonProps) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={loading || !agreed}
+      className="rounded-2xl py-4 items-center mb-8"
+      style={{ backgroundColor: agreed ? "#2A1F26" : "#E5E7EB", opacity: loading ? 0.6 : 1 }}
+    >
+      <Text className={`font-bold text-base ${agreed ? "text-white" : "text-gray-400"}`}>
+        {loading ? "processing..." : `agree & pay $${totalPrice}`}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function PreviewPayButton({ agreed, totalPrice }: Omit<PayButtonProps, "loading" | "onPress">) {
+  return (
+    <TouchableOpacity
+      onPress={() => Alert.alert("Preview Mode", "Payments are disabled in Expo Go.")}
+      disabled={!agreed}
+      className="rounded-2xl py-4 items-center mb-8"
+      style={{ backgroundColor: agreed ? "#2A1F26" : "#E5E7EB" }}
+    >
+      <Text className={`font-bold text-base ${agreed ? "text-white" : "text-gray-400"}`}>
+        {`agree & pay $${totalPrice} (preview)`}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+function ContractPaySection({ rental, agreed, user, router }: any) {
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
+  const [loading, setLoading] = useState(false);
+
+  async function handleAgreeAndPay() {
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+      });
+      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
+      if (initError) throw new Error(initError.message);
+      const { error: presentError } = await presentPaymentSheet();
+      if (presentError) throw new Error(presentError.message);
+      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
+      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
+      router.replace("/(tabs)/rentals");
+    } catch (e: any) {
+      Alert.alert("Payment failed", e.message);
+    }
+    setLoading(false);
+  }
+
+  return <StripePayButton agreed={agreed} loading={loading} totalPrice={rental.total_price} onPress={handleAgreeAndPay} />;
+}
 
 export default function ContractScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [rental, setRental] = useState<any>(null);
   const [agreed, setAgreed] = useState(false);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     supabase
@@ -23,56 +86,6 @@ export default function ContractScreen() {
       .single()
       .then(({ data }) => setRental(data));
   }, [id]);
-
-  async function handleAgreeAndPay() {
-    if (!agreed) { Alert.alert("Please agree to the rental contract first"); return; }
-    setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({
-          rental_id: rental.id,
-          amount: Math.round(rental.total_price * 100),
-          deposit: Math.round(rental.items.deposit * 100),
-        }),
-      });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
-
-      // Init payment sheet
-      const { error: initError } = await initPaymentSheet({
-        paymentIntentClientSecret,
-        merchantDisplayName: "Twirl",
-        applePay: { merchantCountryCode: "US" },
-        googlePay: { merchantCountryCode: "US", testEnv: true },
-        style: "alwaysLight",
-      });
-      if (initError) throw new Error(initError.message);
-
-      const { error: presentError } = await presentPaymentSheet();
-      if (presentError) throw new Error(presentError.message);
-
-      // Log contract agreement
-      await supabase.from("rental_contracts").insert({
-        rental_id: rental.id,
-        renter_id: user!.id,
-        owner_id: rental.items.owner_id,
-        agreed_at: new Date().toISOString(),
-        deposit_intent_id: depositIntentClientSecret?.split("_secret")[0],
-        terms_version: "1.0",
-      });
-
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", id);
-      router.replace("/(tabs)/rentals");
-    } catch (e: any) {
-      Alert.alert("Payment failed", e.message);
-    }
-    setLoading(false);
-  }
 
   if (!rental) return null;
   const item = rental.items;
@@ -165,16 +178,10 @@ export default function ContractScreen() {
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={handleAgreeAndPay}
-          disabled={loading || !agreed}
-          className="rounded-2xl py-4 items-center mb-8"
-          style={{ backgroundColor: agreed ? "#2A1F26" : "#E5E7EB", opacity: loading ? 0.6 : 1 }}
-        >
-          <Text className={`font-bold text-base ${agreed ? "text-white" : "text-gray-400"}`}>
-            {loading ? "processing..." : `agree & pay $${rental.total_price}`}
-          </Text>
-        </TouchableOpacity>
+        {isExpoGo
+          ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
+          : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
+        }
       </ScrollView>
     </View>
   );

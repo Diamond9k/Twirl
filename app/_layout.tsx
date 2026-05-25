@@ -9,9 +9,12 @@ import {
 } from "@expo-google-fonts/cormorant-garamond";
 import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold } from "@expo-google-fonts/inter";
 import { JetBrainsMono_500Medium } from "@expo-google-fonts/jetbrains-mono";
+import Constants from "expo-constants";
 
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { useAuth } from "@/hooks/useAuth";
+
+const isExpoGo = Constants.appOwnership === "expo";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -43,6 +46,14 @@ export default function RootLayout() {
       <View className="flex-1 items-center justify-center bg-twirl-paper">
         <ActivityIndicator color="#2A1F26" />
       </View>
+    );
+  }
+
+  if (isExpoGo) {
+    return (
+      <AuthGuard>
+        <Stack screenOptions={{ headerShown: false }} />
+      </AuthGuard>
     );
   }
 

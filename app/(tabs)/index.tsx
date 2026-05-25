@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TextInput, TouchableOpacity, FlatList, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
-import { OCCASIONS, SIZES, CATEGORIES } from "@/lib/constants";
 import { ItemCard } from "@/components/cards/ItemCard";
 import { StatusBar } from "expo-status-bar";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,13 +17,20 @@ type Item = {
   profiles: { full_name: string; school: string };
 };
 
+const FILTERS = ["All", "Formal", "Casual", "Game Day", "Sorority"];
+
+const OCCASION_MAP: Record<string, string[]> = {
+  Formal:    ["Formals", "Formal", "Date Night", "Crush Party"],
+  Casual:    ["Going Out", "Darty", "Day Event"],
+  "Game Day":["Game Day"],
+  Sorority:  ["Bid Day", "Philanthropy", "Recruitment"],
+};
+
 export default function BrowseScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
-  const [search, setSearch] = useState("");
-  const [selectedOccasion, setSelectedOccasion] = useState("");
-  const [selectedSize, setSelectedSize] = useState("");
+  const [filter, setFilter] = useState("All");
   const [loading, setLoading] = useState(true);
 
   async function fetchItems() {
@@ -36,63 +42,102 @@ export default function BrowseScreen() {
       .neq("owner_id", user?.id ?? "")
       .order("created_at", { ascending: false });
 
-    if (search) query = query.ilike("title", `%${search}%`);
-    if (selectedOccasion) query = query.eq("occasion", selectedOccasion);
-    if (selectedSize) query = query.eq("size", selectedSize);
+    if (filter !== "All") {
+      const occasions = OCCASION_MAP[filter] ?? [];
+      if (occasions.length > 0) query = query.in("occasion", occasions);
+    }
 
     const { data } = await query.limit(50);
     setItems(data ?? []);
     setLoading(false);
   }
 
-  useEffect(() => { fetchItems(); }, [search, selectedOccasion, selectedSize]);
+  useEffect(() => { fetchItems(); }, [filter]);
+
+  const itemCount = items.length;
 
   return (
-    <View className="flex-1 bg-twirl-paper">
+    <View style={{ flex: 1, backgroundColor: "#FDFAF4" }}>
       <StatusBar style="dark" />
-      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
-        <Text className="text-twirl-text mb-2 text-5xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>
-          browse
-        </Text>
-        <TextInput
-          className="bg-twirl-paper rounded-full px-4 py-3 text-twirl-text text-sm border border-twirl-line"
-          placeholder="search dresses, tops, skirts..."
-          placeholderTextColor="#A89AA0"
-          value={search}
-          onChangeText={setSearch}
-        />
+
+      {/* Header */}
+      <View style={{ backgroundColor: "#F7E4DE", height: 150, paddingHorizontal: 20, paddingTop: 56, paddingBottom: 14 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
+          <View>
+            <Text style={{ fontFamily: "JetBrainsMono_500Medium", fontSize: 10, letterSpacing: 1.8, textTransform: "uppercase", color: "#5A4A54" }}>
+              UARK · Spring Rush
+            </Text>
+            <Text style={{ fontFamily: "CormorantGaramond_500Medium_Italic", fontSize: 44, color: "#2A1F26", letterSpacing: -1, lineHeight: 42, marginTop: 1 }}>
+              The Closet.
+            </Text>
+          </View>
+          <Text style={{ fontFamily: "JetBrainsMono_500Medium", fontSize: 10, letterSpacing: 1.5, color: "#B8945A", textTransform: "uppercase" }}>
+            {itemCount} pieces
+          </Text>
+        </View>
+
+        {/* Search bar */}
+        <View style={{ backgroundColor: "#FDFAF4", borderRadius: 999, borderWidth: 0.5, borderColor: "#E8DDD4", paddingVertical: 11, paddingHorizontal: 18, flexDirection: "row", alignItems: "center" }}>
+          <Text style={{ fontFamily: "CormorantGaramond_500Medium_Italic", fontSize: 17, color: "#A89AA0", letterSpacing: -0.1, flex: 1 }}>
+            silk slip, bow dress, crimson…
+          </Text>
+        </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} className="px-4 py-3 bg-twirl-paper" contentContainerStyle={{ gap: 8 }}>
-        <TouchableOpacity
-          onPress={() => setSelectedOccasion("")}
-          className={`px-4 py-2 rounded-full border ${!selectedOccasion ? "bg-twirl-text border-twirl-text" : "bg-twirl-paper border-twirl-line"}`}
-        >
-          <Text className={`text-xs tracking-[1px] uppercase ${!selectedOccasion ? "text-white" : "text-twirl-ink2"}`}>All</Text>
-        </TouchableOpacity>
-        {OCCASIONS.map(o => (
+      {/* Filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingVertical: 14 }}
+        style={{ backgroundColor: "#FDFAF4", flexGrow: 0 }}
+      >
+        {FILTERS.map(f => (
           <TouchableOpacity
-            key={o}
-            onPress={() => setSelectedOccasion(selectedOccasion === o ? "" : o)}
-            className={`px-4 py-2 rounded-full border ${selectedOccasion === o ? "bg-twirl-text border-twirl-text" : "bg-twirl-paper border-twirl-line"}`}
+            key={f}
+            onPress={() => setFilter(f)}
+            style={{
+              height: 34,
+              paddingHorizontal: 14,
+              borderRadius: 17,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: filter === f ? "#2A1F26" : "transparent",
+              borderWidth: filter === f ? 0 : 1,
+              borderColor: "#E8DDD4",
+            }}
           >
-            <Text className={`text-xs tracking-[1px] uppercase ${selectedOccasion === o ? "text-white" : "text-twirl-ink2"}`}>{o}</Text>
+            <Text style={{
+              fontFamily: "JetBrainsMono_500Medium",
+              fontSize: 10,
+              letterSpacing: 1.5,
+              textTransform: "uppercase",
+              color: filter === f ? "#FDFAF4" : "#5A4A54",
+            }}>
+              {f}
+            </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
+      {/* Grid */}
       <FlatList
         data={items}
         keyExtractor={i => i.id}
         numColumns={2}
-        contentContainerStyle={{ padding: 12, gap: 8 }}
-        columnWrapperStyle={{ gap: 8 }}
+        contentContainerStyle={{ gap: 16, padding: 20, paddingBottom: 140 }}
+        columnWrapperStyle={{ gap: 16 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchItems} tintColor="#E56A8A" />}
         ListEmptyComponent={
-          <View className="flex-1 items-center justify-center pt-20">
-            <Text className="text-4xl mb-3">👗</Text>
-            <Text className="text-twirl-muted text-base">no items found</Text>
-          </View>
+          !loading ? (
+            <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 60 }}>
+              <Text style={{ fontFamily: "CormorantGaramond_500Medium_Italic", fontSize: 28, color: "#2A1F26", marginBottom: 8 }}>
+                No pieces yet.
+              </Text>
+              <Text style={{ fontFamily: "Inter_400Regular", fontSize: 14, color: "#A89AA0" }}>
+                Check back during rush week.
+              </Text>
+            </View>
+          ) : null
         }
         renderItem={({ item }) => (
           <ItemCard item={item} onPress={() => router.push(`/item/${item.id}`)} />

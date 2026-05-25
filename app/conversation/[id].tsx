@@ -88,7 +88,14 @@ export default function ConversationScreen() {
         .eq("id", id);
     }
 
-    setMessages((msgs as Message[]) ?? []);
+    setMessages(prev => {
+      const incoming = (msgs as Message[]) ?? [];
+      const incomingIds = new Set(incoming.map(m => m.id));
+      const realtimeOnly = prev.filter(m => !incomingIds.has(m.id));
+      return [...incoming, ...realtimeOnly].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+    });
     setLoading(false);
     setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
   }
@@ -99,11 +106,17 @@ export default function ConversationScreen() {
     setSending(true);
     setInputText("");
 
-    await supabase.from("messages").insert({
+    const { error: insertError } = await supabase.from("messages").insert({
       conversation_id: id,
       sender_id: user!.id,
       content,
     });
+
+    if (insertError) {
+      setInputText(content);
+      setSending(false);
+      return;
+    }
 
     const isUser1 = meta?.user1_id === user!.id;
     const unreadCol = isUser1 ? "unread_user2" : "unread_user1";
@@ -138,7 +151,7 @@ export default function ConversationScreen() {
           <Text className="text-twirl-text text-xl">←</Text>
         </TouchableOpacity>
         <View className="flex-1">
-          <Text className="text-twirl-text text-xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>
+          <Text className="text-twirl-text text-xl" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>
             {meta?.other_user?.full_name ?? "..."}
           </Text>
           {meta?.item?.title ? (

@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 16.0.0"
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -23,9 +24,9 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "cporter2us@gmail.com",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "appleId": "cporter1us@hotmail.com",
+        "ascAppId": "6765989926",
+        "appleTeamId": "JD84S94RNQ"
       }
     }
   }

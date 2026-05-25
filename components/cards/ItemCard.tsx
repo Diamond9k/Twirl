@@ -1,6 +1,6 @@
 import { TouchableOpacity, View, Text, Image, Dimensions } from "react-native";
 
-const WIDTH = (Dimensions.get("window").width - 32) / 2;
+const CARD_WIDTH = (Dimensions.get("window").width - 20 * 2 - 16) / 2;
 
 type Props = {
   item: {
@@ -19,40 +19,64 @@ export function ItemCard({ item, onPress }: Props) {
   return (
     <TouchableOpacity
       onPress={onPress}
-      className="bg-twirl-paper rounded-2xl overflow-hidden border border-twirl-line"
-      style={{ width: WIDTH }}
-      activeOpacity={0.9}
+      activeOpacity={0.92}
+      style={{
+        width: CARD_WIDTH,
+        aspectRatio: 3 / 4,
+        borderRadius: 18,
+        overflow: "hidden",
+        backgroundColor: "#F7E4DE",
+        borderWidth: 0.5,
+        borderColor: "#E8DDD4",
+      }}
     >
       {item.images?.[0] ? (
         <Image
           source={{ uri: item.images[0] }}
-          style={{ width: WIDTH, height: WIDTH * 1.3 }}
+          style={{ width: "100%", height: "100%" }}
           resizeMode="cover"
         />
       ) : (
-        <View
-          className="bg-twirl-blush items-center justify-center"
-          style={{ width: WIDTH, height: WIDTH * 1.3 }}
-        >
-          <Text style={{ fontSize: 40 }}>👗</Text>
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
+          <Text style={{ fontSize: 48 }}>👗</Text>
         </View>
       )}
-      <View className="p-3">
-        <Text className="text-twirl-text text-base" style={{ fontFamily: "serif", fontStyle: "italic" }} numberOfLines={1}>
+
+      {/* Glass meta strip */}
+      <View
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          backgroundColor: "rgba(253,250,244,0.94)",
+          paddingHorizontal: 10,
+          paddingTop: 8,
+          paddingBottom: 10,
+        }}
+      >
+        <Text
+          numberOfLines={1}
+          style={{
+            fontFamily: "CormorantGaramond_500Medium_Italic",
+            fontSize: 14,
+            color: "#2A1F26",
+            letterSpacing: -0.2,
+          }}
+        >
           {item.title}
         </Text>
-        <View className="flex-row items-center justify-between mt-1">
-          <Text className="text-twirl-text text-sm">
-            ${item.price_per_day}
-            <Text className="text-twirl-muted text-xs">/day</Text>
-          </Text>
-          <View className="bg-twirl-blush rounded-full px-2 py-0.5 border border-twirl-line">
-            <Text className="text-twirl-rose text-xs font-medium">{item.size}</Text>
-          </View>
-        </View>
-        {item.occasion ? (
-          <Text className="text-twirl-muted text-[10px] mt-1 uppercase tracking-[1px]">{item.occasion}</Text>
-        ) : null}
+        <Text
+          style={{
+            fontFamily: "JetBrainsMono_500Medium",
+            fontSize: 11,
+            color: "#B84565",
+            marginTop: 2,
+            letterSpacing: 0.3,
+          }}
+        >
+          ${item.price_per_day}/day
+        </Text>
       </View>
     </TouchableOpacity>
   );
