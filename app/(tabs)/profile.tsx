@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { ItemCard } from "@/components/cards/ItemCard";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Profile = {
   full_name: string;
@@ -20,6 +21,7 @@ type Profile = {
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [myItems, setMyItems] = useState<any[]>([]);
   const [connectLoading, setConnectLoading] = useState(false);
@@ -56,7 +58,7 @@ export default function ProfileScreen() {
     <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
       <ScrollView>
-        <View className="bg-twirl-blush px-5 pt-14 pb-6 border-b border-twirl-line">
+        <View className="bg-twirl-blush px-5 pb-6 border-b border-twirl-line" style={{ paddingTop: insets.top + 12 }}>
           <View className="flex-row items-center gap-4">
             <View className="w-16 h-16 rounded-full bg-twirl-paper border border-twirl-line items-center justify-center">
               <Text className="text-3xl">👤</Text>

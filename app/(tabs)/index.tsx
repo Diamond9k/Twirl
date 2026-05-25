@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { ItemCard } from "@/components/cards/ItemCard";
 import { StatusBar } from "expo-status-bar";
 import { useAuth } from "@/hooks/useAuth";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Item = {
   id: string;
@@ -29,6 +30,7 @@ const OCCASION_MAP: Record<string, string[]> = {
 export default function BrowseScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState<Item[]>([]);
   const [filter, setFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,7 +71,7 @@ export default function BrowseScreen() {
       <StatusBar style="dark" />
 
       {/* Header */}
-      <View style={{ backgroundColor: "#F7E4DE", height: 150, paddingHorizontal: 20, paddingTop: 56, paddingBottom: 14 }}>
+      <View style={{ backgroundColor: "#F7E4DE", paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 14 }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 10 }}>
           <View>
             <Text style={{ fontFamily: "JetBrainsMono_500Medium", fontSize: 10, letterSpacing: 1.8, textTransform: "uppercase", color: "#5A4A54" }}>

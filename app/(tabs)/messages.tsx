@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Conversation = {
   id: string;
@@ -29,6 +30,7 @@ type RawConversation = {
 
 export default function MessagesScreen() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,8 +69,8 @@ export default function MessagesScreen() {
   return (
     <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
-      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
-        <Text className="text-twirl-text text-5xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>inbox</Text>
+      <View className="bg-twirl-blush px-5 pb-4 border-b border-twirl-line" style={{ paddingTop: insets.top + 12 }}>
+        <Text className="text-twirl-text text-5xl" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>inbox</Text>
       </View>
 
       <FlatList
@@ -92,7 +94,7 @@ export default function MessagesScreen() {
             </View>
             <View className="flex-1">
               <View className="flex-row items-center justify-between">
-                <Text className="text-twirl-text text-lg" style={{ fontFamily: "serif", fontStyle: "italic" }}>{c.other_user?.full_name}</Text>
+                <Text className="text-twirl-text text-lg" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>{c.other_user?.full_name}</Text>
                 {c.last_message_at && (
                   <Text className="text-twirl-muted text-xs">{new Date(c.last_message_at).toLocaleDateString()}</Text>
                 )}

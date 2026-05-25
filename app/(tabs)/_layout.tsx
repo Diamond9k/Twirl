@@ -146,6 +146,12 @@ export default function TabLayout() {
     <Tabs
       tabBar={(props) => <TwirlTabBar {...props} />}
       screenOptions={{ headerShown: false }}
-    />
+    >
+      <Tabs.Screen name="index" />
+      <Tabs.Screen name="list" />
+      <Tabs.Screen name="rentals" />
+      <Tabs.Screen name="messages" />
+      <Tabs.Screen name="profile" />
+    </Tabs>
   );
 }

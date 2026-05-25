@@ -4,6 +4,7 @@ import { useFocusEffect } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Rental = {
   id: string;
@@ -35,6 +36,7 @@ const COLORS = {
 
 export default function RentalsScreen() {
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("renting");
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
@@ -217,7 +219,7 @@ export default function RentalsScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.paper }}>
       <StatusBar style="dark" />
-      <View style={{ backgroundColor: COLORS.blush, paddingHorizontal: 20, paddingTop: 56, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.line }}>
+      <View style={{ backgroundColor: COLORS.blush, paddingHorizontal: 20, paddingTop: insets.top + 12, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: COLORS.line }}>
         <Text style={{ color: COLORS.text, fontSize: 48, marginBottom: 12, fontFamily: "CormorantGaramond_500Medium_Italic", fontStyle: "italic" }}>ledger</Text>
         <View style={{ flexDirection: "row", backgroundColor: COLORS.paper, borderRadius: 12, padding: 4, borderWidth: 1, borderColor: COLORS.line }}>
           {(["renting", "lending"] as Tab[]).map(t => (

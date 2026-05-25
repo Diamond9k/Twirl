@@ -6,10 +6,12 @@ import { supabase } from "@/lib/supabase";
 import { SIZES, OCCASIONS, CATEGORIES } from "@/lib/constants";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBar } from "expo-status-bar";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export default function ListItemScreen() {
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [pricePerDay, setPricePerDay] = useState("");
@@ -78,8 +80,8 @@ export default function ListItemScreen() {
   return (
     <View className="flex-1 bg-twirl-paper">
       <StatusBar style="dark" />
-      <View className="bg-twirl-blush px-5 pt-14 pb-4 border-b border-twirl-line">
-        <Text className="text-twirl-text text-5xl" style={{ fontFamily: "serif", fontStyle: "italic" }}>new listing</Text>
+      <View className="bg-twirl-blush px-5 pb-4 border-b border-twirl-line" style={{ paddingTop: insets.top + 12 }}>
+        <Text className="text-twirl-text text-5xl" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>new listing</Text>
         <Text className="text-twirl-muted text-sm mt-1">lend a piece</Text>
       </View>
 
