@@ -37,18 +37,17 @@ Deno.serve(async (req) => {
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
+    if (!rental.stripe_payment_intent) return json({ error: "Missing rental payment intent" }, 400);
 
     const errors: string[] = [];
 
     // Capture the rental payment (actually charge the renter)
-    if (rental.stripe_payment_intent) {
-      try {
-        await stripe.paymentIntents.capture(rental.stripe_payment_intent);
-      } catch (err: any) {
-        // Already captured is fine
-        if (!err.message?.includes("already been captured")) {
-          errors.push(`Capture failed: ${err.message}`);
-        }
+    try {
+      await stripe.paymentIntents.capture(rental.stripe_payment_intent);
+    } catch (err: any) {
+      // Already captured is fine for retries after a previous partial success.
+      if (!err.message?.includes("already been captured")) {
+        errors.push(`Capture failed: ${err.message}`);
       }
     }
 
@@ -71,11 +70,17 @@ Deno.serve(async (req) => {
       return json({ error: errors.join("; ") }, 500);
     }
 
-    // Mark rental completed
-    await supabase
+    // Mark completed once; concurrent retries must not credit earnings twice.
+    const { data: completedRental, error: completeError } = await supabase
       .from("rentals")
       .update({ status: "completed" })
-      .eq("id", rental_id);
+      .eq("id", rental_id)
+      .eq("status", "active")
+      .select("id")
+      .maybeSingle();
+
+    if (completeError) return json({ error: completeError.message }, 500);
+    if (!completedRental) return json({ error: "Rental already completed or no longer active" }, 409);
 
     // Credit owner's earnings (rental price minus commission)
     const ownerEarnings = (rental.total_price ?? 0) - (rental.commission_amount ?? 0);
