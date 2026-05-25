@@ -55,6 +55,20 @@ create trigger profiles_updated_at before update on profiles
 create index idx_profiles_school on profiles(school);
 create index idx_profiles_rating on profiles(rating desc);
 
+-- Service-role RPC used by release-deposit after a successful return.
+create or replace function increment_owner_earnings(p_owner_id uuid, p_amount numeric)
+returns void language plpgsql security definer as $$
+begin
+  update profiles
+  set
+    total_earnings = total_earnings + p_amount,
+    total_rentals  = total_rentals + 1
+  where id = p_owner_id;
+end;
+$$;
+revoke execute on function increment_owner_earnings(uuid, numeric) from public, anon, authenticated;
+grant execute on function increment_owner_earnings(uuid, numeric) to service_role;
+
 -- ─── ITEMS ──────────────────────────────────────────────────────────────────
 
 create table items (
@@ -194,7 +208,38 @@ alter table rentals enable row level security;
 
 create policy "Rental parties see rentals"    on rentals for select using (auth.uid() = renter_id or auth.uid() = owner_id);
 create policy "Renters create rentals"        on rentals for insert with check (auth.uid() = renter_id and renter_id <> owner_id);
-create policy "Rental parties update rentals" on rentals for update using (auth.uid() = renter_id or auth.uid() = owner_id);
+create policy "Owners update rental handoff status" on rentals for update
+  using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id);
+
+create or replace function guard_rental_client_updates()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+
+  if auth.uid() is null then
+    raise exception 'Unauthorized rental update';
+  end if;
+
+  if (to_jsonb(new) - 'status' - 'updated_at') is distinct from (to_jsonb(old) - 'status' - 'updated_at') then
+    raise exception 'Only rental status may be updated by clients';
+  end if;
+
+  if auth.uid() = old.owner_id and (
+    (old.status = 'pending' and new.status in ('approved', 'cancelled')) or
+    (old.status = 'paid' and new.status = 'active')
+  ) then
+    return new;
+  end if;
+
+  raise exception 'Invalid rental status transition';
+end;
+$$;
+
+create trigger guard_rental_client_updates before update on rentals
+  for each row execute function guard_rental_client_updates();
 
 create trigger rentals_updated_at before update on rentals
   for each row execute function set_updated_at();
