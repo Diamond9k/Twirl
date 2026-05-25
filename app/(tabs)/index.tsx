@@ -31,6 +31,7 @@ export default function BrowseScreen() {
   const { user } = useAuth();
   const [items, setItems] = useState<Item[]>([]);
   const [filter, setFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
 
   async function fetchItems() {
@@ -54,7 +55,14 @@ export default function BrowseScreen() {
 
   useEffect(() => { fetchItems(); }, [filter]);
 
-  const itemCount = items.length;
+  const filteredItems = searchQuery.trim()
+    ? items.filter(i => {
+        const q = searchQuery.toLowerCase();
+        return i.title?.toLowerCase().includes(q) || i.occasion?.toLowerCase().includes(q) || i.category?.toLowerCase().includes(q);
+      })
+    : items;
+
+  const itemCount = filteredItems.length;
 
   return (
     <View style={{ flex: 1, backgroundColor: "#FDFAF4" }}>
@@ -77,11 +85,13 @@ export default function BrowseScreen() {
         </View>
 
         {/* Search bar */}
-        <View style={{ backgroundColor: "#FDFAF4", borderRadius: 999, borderWidth: 0.5, borderColor: "#E8DDD4", paddingVertical: 11, paddingHorizontal: 18, flexDirection: "row", alignItems: "center" }}>
-          <Text style={{ fontFamily: "CormorantGaramond_500Medium_Italic", fontSize: 17, color: "#A89AA0", letterSpacing: -0.1, flex: 1 }}>
-            silk slip, bow dress, crimson…
-          </Text>
-        </View>
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="silk slip, bow dress, crimson…"
+          placeholderTextColor="#A89AA0"
+          style={{ backgroundColor: "#FDFAF4", borderRadius: 999, borderWidth: 0.5, borderColor: "#E8DDD4", paddingVertical: 11, paddingHorizontal: 18, fontFamily: "CormorantGaramond_500Medium_Italic", fontSize: 17, color: "#2A1F26", letterSpacing: -0.1 }}
+        />
       </View>
 
       {/* Filter chips */}
@@ -121,7 +131,7 @@ export default function BrowseScreen() {
 
       {/* Grid */}
       <FlatList
-        data={items}
+        data={filteredItems}
         keyExtractor={i => i.id}
         numColumns={2}
         contentContainerStyle={{ gap: 16, padding: 20, paddingBottom: 140 }}
