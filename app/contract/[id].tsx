@@ -49,18 +49,30 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
+      if (!session) throw new Error("Not logged in");
+
+      const functionsUrl = getFunctionsUrl();
+      const response = await fetch(`${functionsUrl}/create-payment-intent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
-      const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
-      if (initError) throw new Error(initError.message);
-      const { error: presentError } = await presentPaymentSheet();
-      if (presentError) throw new Error(presentError.message);
-      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
+      const intentBody = await response.json();
+      if (!response.ok) throw new Error(intentBody.error ?? "Could not start payment");
+
+      await authorizePaymentSheet(intentBody.paymentIntentClientSecret, "Twirl");
+      if (intentBody.depositIntentClientSecret) {
+        await authorizePaymentSheet(intentBody.depositIntentClientSecret, "Twirl security deposit");
+      }
+
+      const confirmResponse = await fetch(`${functionsUrl}/confirm-rental-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+        body: JSON.stringify({ rental_id: rental.id }),
+      });
+      const confirmBody = await confirmResponse.json();
+      if (!confirmResponse.ok) throw new Error(confirmBody.error ?? "Could not confirm payment");
+
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Payment failed", e.message);
@@ -68,7 +80,29 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
     setLoading(false);
   }
 
+  async function authorizePaymentSheet(paymentIntentClientSecret: string, merchantDisplayName: string) {
+    const { error: initError } = await initPaymentSheet({
+      paymentIntentClientSecret,
+      merchantDisplayName,
+      applePay: { merchantCountryCode: "US" },
+      googlePay: { merchantCountryCode: "US", testEnv: true },
+      style: "alwaysLight",
+    });
+    if (initError) throw new Error(initError.message);
+
+    const { error: presentError } = await presentPaymentSheet();
+    if (presentError) throw new Error(presentError.message);
+  }
+
   return <StripePayButton agreed={agreed} loading={loading} totalPrice={rental.total_price} onPress={handleAgreeAndPay} />;
+}
+
+function getFunctionsUrl() {
+  if (process.env.EXPO_PUBLIC_API_URL) return process.env.EXPO_PUBLIC_API_URL;
+  if (process.env.EXPO_PUBLIC_SUPABASE_URL) {
+    return `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
+  }
+  throw new Error("Missing Supabase functions URL");
 }
 
 export default function ContractScreen() {

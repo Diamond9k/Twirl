@@ -10,3 +10,5 @@ begin
   where id = p_owner_id;
 end;
 $$;
+
+revoke execute on function increment_owner_earnings(uuid, numeric) from public, anon, authenticated;
