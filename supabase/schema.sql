@@ -38,6 +38,7 @@ create table profiles (
   rating          numeric(3,2) default 0 check (rating between 0 and 5),
   total_rentals   integer default 0 check (total_rentals >= 0),
   total_earnings  numeric(10,2) default 0 check (total_earnings >= 0),
+  stripe_account_id text,
   push_token      text,
   created_at      timestamptz default now(),
   updated_at      timestamptz default now()
@@ -54,6 +55,18 @@ create trigger profiles_updated_at before update on profiles
 
 create index idx_profiles_school on profiles(school);
 create index idx_profiles_rating on profiles(rating desc);
+
+create or replace function increment_owner_earnings(p_owner_id uuid, p_amount numeric)
+returns void language plpgsql security definer as $$
+begin
+  update profiles
+  set
+    total_earnings = total_earnings + p_amount,
+    total_rentals  = total_rentals + 1
+  where id = p_owner_id;
+end;
+$$;
+revoke execute on function increment_owner_earnings(uuid, numeric) from public, anon, authenticated;
 
 -- ─── ITEMS ──────────────────────────────────────────────────────────────────
 
@@ -192,12 +205,84 @@ create table rentals (
 );
 alter table rentals enable row level security;
 
-create policy "Rental parties see rentals"    on rentals for select using (auth.uid() = renter_id or auth.uid() = owner_id);
-create policy "Renters create rentals"        on rentals for insert with check (auth.uid() = renter_id and renter_id <> owner_id);
-create policy "Rental parties update rentals" on rentals for update using (auth.uid() = renter_id or auth.uid() = owner_id);
+create policy "Rental parties see rentals" on rentals for select using (auth.uid() = renter_id or auth.uid() = owner_id);
+create policy "Renters create rentals" on rentals for insert with check (
+  auth.uid() = renter_id
+  and renter_id <> owner_id
+  and status = 'pending'
+  and stripe_payment_intent is null
+  and stripe_deposit_intent is null
+  and contract_agreed = false
+  and contract_agreed_at is null
+  and return_confirmed_at is null
+  and deposit_released_at is null
+);
+create policy "Rental parties update rentals" on rentals for update
+  using (auth.uid() = renter_id or auth.uid() = owner_id)
+  with check (auth.uid() = renter_id or auth.uid() = owner_id);
+
+create or replace function enforce_rental_client_update()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if auth.role() = 'service_role' then
+    return new;
+  end if;
+
+  if auth.uid() is null then
+    raise exception 'Authentication required' using errcode = '42501';
+  end if;
+
+  if new.item_id is distinct from old.item_id
+    or new.renter_id is distinct from old.renter_id
+    or new.owner_id is distinct from old.owner_id
+    or new.conversation_id is distinct from old.conversation_id
+    or new.start_date is distinct from old.start_date
+    or new.end_date is distinct from old.end_date
+    or new.total_price is distinct from old.total_price
+    or new.commission_amount is distinct from old.commission_amount
+    or new.deposit_amount is distinct from old.deposit_amount
+    or new.stripe_payment_intent is distinct from old.stripe_payment_intent
+    or new.stripe_deposit_intent is distinct from old.stripe_deposit_intent
+    or new.contract_agreed is distinct from old.contract_agreed
+    or new.contract_agreed_at is distinct from old.contract_agreed_at
+    or new.return_confirmed_at is distinct from old.return_confirmed_at
+    or new.deposit_released_at is distinct from old.deposit_released_at then
+    raise exception 'Rental fields can only be changed by trusted server code' using errcode = '42501';
+  end if;
+
+  if new.status is distinct from old.status then
+    if auth.uid() = old.owner_id
+      and old.status = 'pending'
+      and new.status in ('approved', 'cancelled') then
+      return new;
+    end if;
+
+    if auth.uid() = old.owner_id
+      and old.status = 'paid'
+      and new.status = 'active'
+      and coalesce(old.contract_agreed, false) = true
+      and old.stripe_payment_intent is not null
+      and (coalesce(old.deposit_amount, 0) = 0 or old.stripe_deposit_intent is not null) then
+      return new;
+    end if;
+
+    raise exception 'Invalid rental status transition' using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
 
 create trigger rentals_updated_at before update on rentals
   for each row execute function set_updated_at();
+
+create trigger enforce_rental_client_update_trigger
+  before update on rentals
+  for each row execute function enforce_rental_client_update();
 
 create index idx_rentals_renter on rentals(renter_id);
 create index idx_rentals_owner  on rentals(owner_id);
