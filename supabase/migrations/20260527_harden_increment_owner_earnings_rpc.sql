@@ -1,6 +1,6 @@
--- RPC called by release-deposit edge function after successful rental return
--- Atomically increments owner's earnings and rental count
-create or replace function increment_owner_earnings(p_owner_id uuid, p_amount numeric)
+-- Harden existing release-deposit RPC deployments. SECURITY DEFINER functions
+-- are executable by PUBLIC unless privileges are explicitly revoked.
+create or replace function public.increment_owner_earnings(p_owner_id uuid, p_amount numeric)
 returns void
 language plpgsql
 security definer
