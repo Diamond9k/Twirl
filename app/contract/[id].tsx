@@ -9,9 +9,10 @@ import { StatusBar } from "expo-status-bar";
 
 const isExpoGo = Constants.appOwnership === "expo";
 
-type PayButtonProps = { agreed: boolean; loading: boolean; totalPrice: number; onPress: () => void };
+type PayButtonProps = { agreed: boolean; loading: boolean; totalPrice: number; deposit: number; onPress: () => void };
 
-function StripePayButton({ agreed, loading, totalPrice, onPress }: PayButtonProps) {
+function StripePayButton({ agreed, loading, totalPrice, deposit, onPress }: PayButtonProps) {
+  const authorizedTotal = totalPrice + deposit;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -20,13 +21,14 @@ function StripePayButton({ agreed, loading, totalPrice, onPress }: PayButtonProp
       style={{ backgroundColor: agreed ? "#2A1F26" : "#E5E7EB", opacity: loading ? 0.6 : 1 }}
     >
       <Text className={`font-bold text-base ${agreed ? "text-white" : "text-gray-400"}`}>
-        {loading ? "processing..." : `agree & pay $${totalPrice}`}
+        {loading ? "processing..." : `agree & authorize $${authorizedTotal}`}
       </Text>
     </TouchableOpacity>
   );
 }
 
-function PreviewPayButton({ agreed, totalPrice }: Omit<PayButtonProps, "loading" | "onPress">) {
+function PreviewPayButton({ agreed, totalPrice, deposit }: Omit<PayButtonProps, "loading" | "onPress">) {
+  const authorizedTotal = totalPrice + deposit;
   return (
     <TouchableOpacity
       onPress={() => Alert.alert("Preview Mode", "Payments are disabled in Expo Go.")}
@@ -35,7 +37,7 @@ function PreviewPayButton({ agreed, totalPrice }: Omit<PayButtonProps, "loading"
       style={{ backgroundColor: agreed ? "#2A1F26" : "#E5E7EB" }}
     >
       <Text className={`font-bold text-base ${agreed ? "text-white" : "text-gray-400"}`}>
-        {`agree & pay $${totalPrice} (preview)`}
+        {`agree & authorize $${authorizedTotal} (preview)`}
       </Text>
     </TouchableOpacity>
   );
@@ -49,17 +51,19 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
+      const response = await fetch(edgeFunctionUrl("create-payment-intent"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const { paymentIntentClientSecret, error } = await response.json();
+      if (!response.ok) throw new Error(error ?? "Could not start payment");
+      if (!paymentIntentClientSecret) throw new Error("Missing payment intent");
       const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
       if (initError) throw new Error(initError.message);
       const { error: presentError } = await presentPaymentSheet();
       if (presentError) throw new Error(presentError.message);
-      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
+      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: paymentIntentClientSecret.split("_secret")[0], terms_version: "1.0" });
       await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
@@ -68,7 +72,16 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
     setLoading(false);
   }
 
-  return <StripePayButton agreed={agreed} loading={loading} totalPrice={rental.total_price} onPress={handleAgreeAndPay} />;
+  return <StripePayButton agreed={agreed} loading={loading} totalPrice={rental.total_price} deposit={rental.items.deposit} onPress={handleAgreeAndPay} />;
+}
+
+function edgeFunctionUrl(functionName: string) {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (apiUrl) return `${apiUrl.replace(/\/$/, "")}/${functionName}`;
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  if (!supabaseUrl) throw new Error("Missing Supabase function URL");
+  return `${supabaseUrl.replace(/\/$/, "")}/functions/v1/${functionName}`;
 }
 
 export default function ContractScreen() {
@@ -123,7 +136,7 @@ export default function ContractScreen() {
             <Text className="text-twirl-text font-semibold">${deposit}</Text>
           </View>
           <View className="flex-row justify-between mt-3 pt-3 border-t border-pink-50">
-            <Text className="text-twirl-text font-bold">Total charged today</Text>
+            <Text className="text-twirl-text font-bold">Rental fee charged after return</Text>
             <Text className="text-twirl-pink font-bold text-lg">${rental.total_price}</Text>
           </View>
         </View>
@@ -179,7 +192,7 @@ export default function ContractScreen() {
         </TouchableOpacity>
 
         {isExpoGo
-          ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
+          ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} deposit={deposit} />
           : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
         }
       </ScrollView>
