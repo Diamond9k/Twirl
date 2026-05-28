@@ -37,18 +37,22 @@ Deno.serve(async (req) => {
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
+    if (!rental.stripe_payment_intent) {
+      return json({ error: "Rental has no Stripe payment intent to capture" }, 400);
+    }
 
     const errors: string[] = [];
+    const rentalAmount = toCents(rental.total_price);
 
     // Capture the rental payment (actually charge the renter)
-    if (rental.stripe_payment_intent) {
-      try {
-        await stripe.paymentIntents.capture(rental.stripe_payment_intent);
-      } catch (err: any) {
-        // Already captured is fine
-        if (!err.message?.includes("already been captured")) {
-          errors.push(`Capture failed: ${err.message}`);
-        }
+    try {
+      await stripe.paymentIntents.capture(rental.stripe_payment_intent, {
+        amount_to_capture: rentalAmount,
+      });
+    } catch (err: any) {
+      // Already captured is fine
+      if (!err.message?.includes("already been captured")) {
+        errors.push(`Capture failed: ${err.message}`);
       }
     }
 
@@ -71,18 +75,14 @@ Deno.serve(async (req) => {
       return json({ error: errors.join("; ") }, 500);
     }
 
-    // Mark rental completed
-    await supabase
-      .from("rentals")
-      .update({ status: "completed" })
-      .eq("id", rental_id);
-
-    // Credit owner's earnings (rental price minus commission)
+    // Complete the rental and credit the owner in one database transaction.
     const ownerEarnings = (rental.total_price ?? 0) - (rental.commission_amount ?? 0);
-    await supabase.rpc("increment_owner_earnings", {
+    const { error: completeError } = await supabase.rpc("complete_rental_return", {
+      p_rental_id: rental.id,
       p_owner_id: rental.owner_id,
       p_amount: ownerEarnings,
     });
+    if (completeError) return json({ error: completeError.message }, 500);
 
     return json({ success: true });
   } catch (err: any) {
@@ -100,4 +100,10 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Headers": "authorization, content-type",
     },
   });
+}
+
+function toCents(value: number | string | null): number {
+  const amount = Number(value ?? 0);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.round(amount * 100);
 }
