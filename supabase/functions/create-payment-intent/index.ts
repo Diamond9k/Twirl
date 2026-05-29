@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
     const { rental_id, amount, deposit } = await req.json();
-    if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
+    if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
     // Verify rental belongs to this user and is still pending
     const { data: rental, error: rentalError } = await supabase
@@ -44,9 +44,21 @@ Deno.serve(async (req) => {
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
 
+    const amountCents = moneyToCents(rental.total_price);
+    const depositCents = moneyToCents(rental.deposit_amount ?? 0);
+    if (amountCents <= 0) return json({ error: "Rental has invalid total_price" }, 500);
+
+    // Reject tampered or stale clients; Stripe amounts must come from the DB.
+    if (amount !== undefined && clientCents(amount) !== amountCents) {
+      return json({ error: "Payment amount mismatch" }, 400);
+    }
+    if (deposit !== undefined && clientCents(deposit) !== depositCents) {
+      return json({ error: "Deposit amount mismatch" }, 400);
+    }
+
     // Create PaymentIntent for rental amount (manual capture — charge on handoff)
     const paymentIntent = await stripe.paymentIntents.create({
-      amount,
+      amount: amountCents,
       currency: "usd",
       capture_method: "manual",
       metadata: { rental_id, type: "rental", user_id: user.id },
@@ -54,26 +66,28 @@ Deno.serve(async (req) => {
 
     // Create PaymentIntent for deposit (manual capture — hold, release on safe return)
     let depositIntentClientSecret: string | null = null;
-    if (deposit && deposit > 0) {
+    if (depositCents > 0) {
       const depositIntent = await stripe.paymentIntents.create({
-        amount: deposit,
+        amount: depositCents,
         currency: "usd",
         capture_method: "manual",
         metadata: { rental_id, type: "deposit", user_id: user.id },
       });
       depositIntentClientSecret = depositIntent.client_secret;
 
-      await supabase
+      const { error: depositUpdateError } = await supabase
         .from("rentals")
         .update({ stripe_deposit_intent: depositIntent.id })
         .eq("id", rental_id);
+      if (depositUpdateError) throw depositUpdateError;
     }
 
     // Store payment intent ID on rental
-    await supabase
+    const { error: paymentUpdateError } = await supabase
       .from("rentals")
       .update({ stripe_payment_intent: paymentIntent.id })
       .eq("id", rental_id);
+    if (paymentUpdateError) throw paymentUpdateError;
 
     return json({
       paymentIntentClientSecret: paymentIntent.client_secret,
@@ -93,4 +107,15 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+function moneyToCents(value: unknown): number {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return NaN;
+  return Math.round(amount * 100);
+}
+
+function clientCents(value: unknown): number {
+  const cents = Number(value);
+  return Number.isInteger(cents) ? cents : NaN;
 }

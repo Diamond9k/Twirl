@@ -54,13 +54,16 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
         body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const { paymentIntentClientSecret, depositIntentClientSecret, error: paymentError } = await response.json();
+      if (!response.ok) throw new Error(paymentError ?? "Could not initialize payment");
       const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
       if (initError) throw new Error(initError.message);
       const { error: presentError } = await presentPaymentSheet();
       if (presentError) throw new Error(presentError.message);
-      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
+      const { error: contractError } = await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
+      if (contractError) throw contractError;
+      const { error: rentalUpdateError } = await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
+      if (rentalUpdateError) throw rentalUpdateError;
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Payment failed", e.message);
