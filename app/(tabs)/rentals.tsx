@@ -107,8 +107,7 @@ export default function RentalsScreen() {
         setActionLoading(rental.id);
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
-          const res = await fetch(`${apiUrl}/functions/v1/release-deposit`, {
+          const res = await fetch(`${getFunctionsBaseUrl()}/release-deposit`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -277,4 +276,13 @@ export default function RentalsScreen() {
       />
     </View>
   );
+}
+
+function getFunctionsBaseUrl() {
+  const explicitApiUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "");
+  if (explicitApiUrl) return explicitApiUrl;
+
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+  if (!supabaseUrl) throw new Error("Missing Supabase functions URL");
+  return `${supabaseUrl}/functions/v1`;
 }
