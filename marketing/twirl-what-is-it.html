@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Twirl — What is this?</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#FBF7F0; --ink:#1C1A17; --muted:#6B6457;
+    --rose:#C16B82; --gold:#B08D57; --line:#D8CFBF; --card:#FFFDF8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    background:var(--cream); color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    line-height:1.5; padding:24px 16px 56px;
+    display:flex; justify-content:center;
+  }
+  .wrap{width:100%; max-width:560px}
+
+  /* blueprint frame */
+  .frame{
+    position:relative; border:1px solid var(--line);
+    background:var(--card); padding:40px 28px 34px; border-radius:2px;
+    box-shadow:0 1px 0 #fff inset, 0 24px 60px -34px rgba(28,26,23,.45);
+  }
+  .frame::before{
+    content:""; position:absolute; inset:7px; border:1px solid var(--line);
+    pointer-events:none; border-radius:1px;
+  }
+  .corner{position:absolute; width:16px; height:16px; color:var(--gold); opacity:.9}
+  .corner.tl{top:13px;left:13px;border-top:1.5px solid;border-left:1.5px solid}
+  .corner.tr{top:13px;right:13px;border-top:1.5px solid;border-right:1.5px solid}
+  .corner.bl{bottom:13px;left:13px;border-bottom:1.5px solid;border-left:1.5px solid}
+  .corner.br{bottom:13px;right:13px;border-bottom:1.5px solid;border-right:1.5px solid}
+
+  .kicker{
+    text-align:center; font-family:'JetBrains Mono',monospace; font-size:10.5px;
+    letter-spacing:.32em; text-transform:uppercase; color:var(--gold); margin-bottom:14px;
+  }
+  .word{
+    text-align:center; font-family:'Cormorant Garamond',serif; font-weight:600;
+    font-size:64px; line-height:.95; letter-spacing:.01em;
+  }
+  .word .dot{color:var(--rose)}
+  .tag{
+    text-align:center; font-family:'Cormorant Garamond',serif; font-style:italic;
+    font-size:21px; color:var(--muted); margin-top:6px;
+  }
+  .rule{display:flex; align-items:center; gap:12px; margin:26px 2px 22px; color:var(--line)}
+  .rule::before,.rule::after{content:""; height:1px; flex:1; background:var(--line)}
+  .rule span{font-size:11px; color:var(--gold)}
+
+  p.lead{font-size:15.5px; color:#3a352d}
+  p.lead b{color:var(--ink)}
+  .rose{color:var(--rose); font-weight:600}
+
+  /* stat band */
+  .stats{display:flex; gap:10px; margin:24px 0 6px}
+  .stat{flex:1; text-align:center; background:var(--cream); border:1px solid var(--line); padding:12px 6px; border-radius:2px}
+  .stat .n{font-family:'Cormorant Garamond',serif; font-weight:600; font-size:32px; line-height:1; color:var(--ink)}
+  .stat .n.crit{color:var(--rose)}
+  .stat .l{font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--muted); margin-top:7px}
+
+  /* use-case cards */
+  .cards{margin-top:26px; display:flex; flex-direction:column; gap:14px}
+  .case{display:flex; gap:14px; align-items:flex-start; padding:16px 16px; border:1px solid var(--line); border-radius:2px; background:#fff}
+  .case .ic{flex:none; width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-size:18px; background:var(--cream); border:1px solid var(--line)}
+  .case h3{font-family:'Cormorant Garamond',serif; font-weight:600; font-size:19px; letter-spacing:.01em}
+  .case p{font-size:13.5px; color:var(--muted); margin-top:3px}
+  .case p b{color:#2c2820}
+  .case.flag h3{color:var(--rose)}
+
+  .punch{
+    margin-top:26px; text-align:center; font-family:'Cormorant Garamond',serif;
+    font-style:italic; font-size:22px; line-height:1.35; color:var(--ink);
+  }
+  .sig{text-align:center; margin-top:18px; font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.22em; text-transform:uppercase; color:var(--muted)}
+  .sig b{color:var(--gold); font-weight:500}
+
+  @media(max-width:420px){
+    .frame{padding:34px 18px 28px}
+    .word{font-size:52px}
+    .stats{flex-wrap:nowrap}
+    .stat .n{font-size:26px}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="frame">
+      <span class="corner tl"></span><span class="corner tr"></span>
+      <span class="corner bl"></span><span class="corner br"></span>
+
+      <div class="kicker">University of Arkansas &middot; Founded 2026</div>
+      <div class="word">Twirl<span class="dot">.</span></div>
+      <div class="tag">Airbnb, but for dresses.</div>
+
+      <div class="rule"><span>&#10022;</span></div>
+
+      <p class="lead">
+        A girl lists a dress she owns. Another girl rents it for a formal or game day.
+        <b>Twirl handles the payment, the contract, and the deposit</b> — and takes 15%.
+        Real app, real money, built for sorority row.
+      </p>
+
+      <div class="stats">
+        <div class="stat"><div class="n">12</div><div class="l">AI agents</div></div>
+        <div class="stat"><div class="n">75</div><div class="l">Issues found</div></div>
+        <div class="stat"><div class="n crit">17</div><div class="l">Critical</div></div>
+      </div>
+
+      <div class="rule"><span>WHAT YOU'RE WATCHING</span></div>
+
+      <p class="lead" style="text-align:center">
+        An <span class="rose">AI agent</span> isn't just chatting here — it's running the
+        whole startup's engineering. In one session it:
+      </p>
+
+      <div class="cards">
+        <div class="case">
+          <div class="ic">&#128270;</div>
+          <div>
+            <h3>Audited the entire app</h3>
+            <p>Launched <b>12 AI agents at once</b> to read every file, the database, and the payment code in parallel — then verified the findings against the <b>real live system</b>.</p>
+          </div>
+        </div>
+        <div class="case flag">
+          <div class="ic">&#128163;</div>
+          <div>
+            <h3>Caught launch-killers</h3>
+            <p>The app charged <b>real cards</b> but never actually paid the dress owners. A bug let you pay <b>1&cent; for any rental</b>. Anyone could <b>fake their own earnings</b>.</p>
+          </div>
+        </div>
+        <div class="case">
+          <div class="ic">&#128737;</div>
+          <div>
+            <h3>Switched to safe build mode</h3>
+            <p>Flipped payments to <b>test mode</b> (fake money) so nothing's at risk, and is writing the step-by-step plan to make Twirl genuinely safe to launch.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="rule"><span>&#10022;</span></div>
+
+      <p class="punch">
+        The founder doesn't write code.<br>
+        He's directing a full dev team —<br>that happens to be one&nbsp;AI.
+      </p>
+
+      <div class="sig">Built with <b>Claude</b> &middot; Directed by Cooper Porter</div>
+    </div>
+  </div>
+</body>
+</html>
