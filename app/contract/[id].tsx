@@ -45,6 +45,20 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loading, setLoading] = useState(false);
 
+  async function presentIntent(clientSecret: string, label: string) {
+    const { error: initError } = await initPaymentSheet({
+      paymentIntentClientSecret: clientSecret,
+      merchantDisplayName: "Twirl",
+      applePay: { merchantCountryCode: "US" },
+      googlePay: { merchantCountryCode: "US", testEnv: true },
+      style: "alwaysLight",
+    });
+    if (initError) throw new Error(`${label}: ${initError.message}`);
+
+    const { error: presentError } = await presentPaymentSheet();
+    if (presentError) throw new Error(`${label}: ${presentError.message}`);
+  }
+
   async function handleAgreeAndPay() {
     setLoading(true);
     try {
@@ -54,11 +68,15 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
         body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
-      const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
-      if (initError) throw new Error(initError.message);
-      const { error: presentError } = await presentPaymentSheet();
-      if (presentError) throw new Error(presentError.message);
+      const intentResponse = await response.json();
+      if (!response.ok) throw new Error(intentResponse.error ?? "Could not start payment");
+      const { paymentIntentClientSecret, depositIntentClientSecret } = intentResponse;
+      if (!paymentIntentClientSecret) throw new Error("Missing payment authorization");
+
+      await presentIntent(paymentIntentClientSecret, "Rental payment failed");
+      if (depositIntentClientSecret) {
+        await presentIntent(depositIntentClientSecret, "Deposit authorization failed");
+      }
       await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
       await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
       router.replace("/(tabs)/rentals");
