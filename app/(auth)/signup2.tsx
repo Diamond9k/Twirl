@@ -64,11 +64,11 @@ export default function Signup2Screen() {
     await new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  async function signUpWithRetry(email: string, password: string) {
+  async function signUpWithRetry(email: string, password: string, fullName: string) {
     const first = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name, school: "University of Arkansas", sorority: letters, size } },
+      options: { data: { full_name: fullName, school: "University of Arkansas", sorority: letters, size } },
     });
 
     if (!first.error) return first;
@@ -81,7 +81,7 @@ export default function Signup2Screen() {
     return supabase.auth.signUp({
       email,
       password,
-      options: { data: { full_name: name, school: "University of Arkansas", sorority: letters, size } },
+      options: { data: { full_name: fullName, school: "University of Arkansas", sorority: letters, size } },
     });
   }
 
@@ -113,7 +113,12 @@ export default function Signup2Screen() {
     try {
       const email = params.email || "";
       const password = params.password || "";
-      const { data, error: signError } = await signUpWithRetry(email, password);
+      const fullName = name.trim();
+      if (fullName.length < 2) {
+        setStep(1);
+        throw new Error("Enter your full name.");
+      }
+      const { data, error: signError } = await signUpWithRetry(email, password, fullName);
       if (signError) throw signError;
       const resolvedUser = data.user ?? null;
       if (resolvedUser) {
@@ -121,7 +126,7 @@ export default function Signup2Screen() {
         const { error: profileErr } = await supabase.from("profiles").upsert({
           id: resolvedUser.id,
           email,
-          full_name: name,
+          full_name: fullName,
           school: "University of Arkansas",
           sorority: letters,
           size,
@@ -142,11 +147,12 @@ export default function Signup2Screen() {
       if (isRetryableTimeoutError(e) && email && password) {
         const signIn = await supabase.auth.signInWithPassword({ email, password });
         if (!signIn.error && signIn.data.user) {
+          const fullName = name.trim();
           const avatar_url = await uploadAvatar(signIn.data.user.id);
           const { error: profileErr } = await supabase.from("profiles").upsert({
             id: signIn.data.user.id,
             email,
-            full_name: name,
+            full_name: fullName,
             school: "University of Arkansas",
             sorority: letters,
             size,
@@ -171,6 +177,11 @@ export default function Signup2Screen() {
   }
 
   function next() {
+    if (step === 1 && name.trim().length < 2) {
+      setError("Enter your full name.");
+      return;
+    }
+    setError("");
     if (step < 3) setStep((s) => s + 1);
     else void finishSignup();
   }

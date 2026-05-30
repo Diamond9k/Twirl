@@ -19,14 +19,17 @@ const isExpoGo = Constants.appOwnership === "expo";
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
   const segments = useSegments();
+  const rootSegment = segments[0];
+  const authSegment = segments[1];
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
-    const inAuth = segments[0] === "(auth)";
+    const inAuth = rootSegment === "(auth)";
+    const completingSignup = inAuth && authSegment === "signup2";
     if (!session && !inAuth) router.replace("/(auth)/login");
-    if (session && inAuth) router.replace("/(tabs)/");
-  }, [session, loading]);
+    if (session && inAuth && !completingSignup) router.replace("/(tabs)/");
+  }, [session, loading, rootSegment, authSegment, router]);
 
   return <>{children}</>;
 }
