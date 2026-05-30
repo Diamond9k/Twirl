@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     // Verify rental belongs to this owner and is active
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("id, owner_id, renter_id, status, total_price, commission_amount, stripe_payment_intent, stripe_deposit_intent")
+      .select("id, owner_id, renter_id, status, total_price, commission_amount, deposit_amount, stripe_payment_intent, stripe_deposit_intent")
       .eq("id", rental_id)
       .eq("owner_id", user.id)
       .eq("status", "active")
@@ -39,16 +39,21 @@ Deno.serve(async (req) => {
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
 
     const errors: string[] = [];
+    if (!rental.stripe_payment_intent) {
+      return json({ error: "Missing payment authorization for rental" }, 409);
+    }
+    const depositAmount = toNumber(rental.deposit_amount ?? 0);
+    if (depositAmount > 0 && !rental.stripe_deposit_intent) {
+      return json({ error: "Missing deposit authorization for rental" }, 409);
+    }
 
     // Capture the rental payment (actually charge the renter)
-    if (rental.stripe_payment_intent) {
-      try {
-        await stripe.paymentIntents.capture(rental.stripe_payment_intent);
-      } catch (err: any) {
-        // Already captured is fine
-        if (!err.message?.includes("already been captured")) {
-          errors.push(`Capture failed: ${err.message}`);
-        }
+    try {
+      await stripe.paymentIntents.capture(rental.stripe_payment_intent);
+    } catch (err: any) {
+      // Already captured is fine
+      if (!err.message?.includes("already been captured")) {
+        errors.push(`Capture failed: ${err.message}`);
       }
     }
 
@@ -61,6 +66,8 @@ Deno.serve(async (req) => {
         } else if (depositIntent.status === "succeeded") {
           // Already captured — issue a full refund
           await stripe.refunds.create({ payment_intent: rental.stripe_deposit_intent });
+        } else if (depositIntent.status !== "canceled") {
+          errors.push(`Deposit was not authorized: ${depositIntent.status}`);
         }
       } catch (err: any) {
         errors.push(`Deposit release failed: ${err.message}`);
@@ -71,11 +78,26 @@ Deno.serve(async (req) => {
       return json({ error: errors.join("; ") }, 500);
     }
 
-    // Mark rental completed
-    await supabase
+    // Mark rental completed exactly once; concurrent return confirmations must
+    // not double-credit owner earnings.
+    const { data: completedRental, error: completeError } = await supabase
       .from("rentals")
-      .update({ status: "completed" })
-      .eq("id", rental_id);
+      .update({
+        status: "completed",
+        return_confirmed_at: new Date().toISOString(),
+        deposit_released_at: new Date().toISOString(),
+      })
+      .eq("id", rental_id)
+      .eq("status", "active")
+      .select("id")
+      .maybeSingle();
+
+    if (completeError) {
+      return json({ error: completeError.message }, 500);
+    }
+    if (!completedRental) {
+      return json({ error: "Rental was already completed or changed state" }, 409);
+    }
 
     // Credit owner's earnings (rental price minus commission)
     const ownerEarnings = (rental.total_price ?? 0) - (rental.commission_amount ?? 0);
@@ -100,4 +122,10 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Headers": "authorization, content-type",
     },
   });
+}
+
+function toNumber(value: unknown) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 0;
+  return numeric;
 }

@@ -30,19 +30,23 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { rental_id, amount, deposit } = await req.json();
-    if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
+    const { rental_id } = await req.json();
+    if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
-    // Verify rental belongs to this user and is still pending
+    // Verify rental belongs to this user and use server-side totals only.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
       .select("id, renter_id, status, total_price, deposit_amount")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
-      .eq("status", "pending")
+      .in("status", ["pending", "approved"])
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
+
+    const amount = toCents(rental.total_price, "rental total");
+    const deposit = toCents(rental.deposit_amount ?? 0, "deposit amount");
+    if (amount <= 0) return json({ error: "Invalid rental amount" }, 400);
 
     // Create PaymentIntent for rental amount (manual capture — charge on handoff)
     const paymentIntent = await stripe.paymentIntents.create({
@@ -93,4 +97,12 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+function toCents(value: unknown, fieldName: string) {
+  const numeric = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new Error(`Invalid ${fieldName}`);
+  }
+  return Math.round(numeric * 100);
 }
