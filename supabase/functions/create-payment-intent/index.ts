@@ -33,13 +33,13 @@ Deno.serve(async (req) => {
     const { rental_id, amount, deposit } = await req.json();
     if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
 
-    // Verify rental belongs to this user and is still pending
+    // Approved requests still need to be payable from the renter's ledger.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
       .select("id, renter_id, status, total_price, deposit_amount")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
-      .eq("status", "pending")
+      .in("status", ["pending", "approved"])
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
