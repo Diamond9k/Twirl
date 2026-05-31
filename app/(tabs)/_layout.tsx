@@ -59,13 +59,13 @@ function PersonIcon({ color, size = 22 }: { color: string; size?: number }) {
   );
 }
 
-const TABS = [
-  { label: "BROWSE",   Icon: BrowseIcon },
-  { label: "LIST",     Icon: PlusIcon },
-  { label: "RENTALS",  Icon: LedgerIcon },
-  { label: "MESSAGES", Icon: EnvIcon },
-  { label: "YOU",      Icon: PersonIcon },
-];
+const TABS = {
+  index:    { label: "BROWSE",   Icon: BrowseIcon },
+  list:     { label: "LIST",     Icon: PlusIcon },
+  rentals:  { label: "RENTALS",  Icon: LedgerIcon },
+  messages: { label: "MESSAGES", Icon: EnvIcon },
+  profile:  { label: "YOU",      Icon: PersonIcon },
+};
 
 function TwirlTabBar({ state, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -102,7 +102,7 @@ function TwirlTabBar({ state, navigation }: BottomTabBarProps) {
       >
         {state.routes.map((route, index) => {
           const active = state.index === index;
-          const tab = TABS[index];
+          const tab = TABS[route.name as keyof typeof TABS] ?? TABS.index;
 
           return (
             <Pressable

@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl, Alert, ActivityIndicator } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBar } from "expo-status-bar";
@@ -35,6 +35,7 @@ const COLORS = {
 
 export default function RentalsScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("renting");
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,8 +108,12 @@ export default function RentalsScreen() {
         setActionLoading(rental.id);
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
-          const res = await fetch(`${apiUrl}/functions/v1/release-deposit`, {
+          const rawApiUrl = process.env.EXPO_PUBLIC_API_URL
+            ?? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
+          const functionsUrl = rawApiUrl.endsWith("/functions/v1")
+            ? rawApiUrl
+            : `${rawApiUrl}/functions/v1`;
+          const res = await fetch(`${functionsUrl}/release-deposit`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -197,9 +202,12 @@ export default function RentalsScreen() {
     if (!isLending) {
       if (rental.status === "approved") {
         return (
-          <View style={{ marginTop: 10, backgroundColor: "#D1FAE5", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}>
-            <Text style={{ color: "#065F46", fontSize: 12, textAlign: "center" }}>Approved — complete payment to confirm</Text>
-          </View>
+          <TouchableOpacity
+            onPress={() => router.push(`/contract/${rental.id}`)}
+            style={{ marginTop: 10, backgroundColor: "#065F46", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 }}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, textAlign: "center", letterSpacing: 1, fontWeight: "600" }}>COMPLETE PAYMENT</Text>
+          </TouchableOpacity>
         );
       }
       if (rental.status === "paid") {

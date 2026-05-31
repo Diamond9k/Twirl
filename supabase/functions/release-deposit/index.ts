@@ -27,7 +27,8 @@ Deno.serve(async (req) => {
     const { rental_id } = await req.json();
     if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
-    // Verify rental belongs to this owner and is active
+    // Verify rental belongs to this owner and is active. Completed rentals are
+    // treated as idempotent success so double taps/retries do not alarm users.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
       .select("id, owner_id, renter_id, status, total_price, commission_amount, stripe_payment_intent, stripe_deposit_intent")
@@ -36,7 +37,20 @@ Deno.serve(async (req) => {
       .eq("status", "active")
       .single();
 
-    if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
+    if (rentalError || !rental) {
+      const { data: completedRental } = await supabase
+        .from("rentals")
+        .select("id")
+        .eq("id", rental_id)
+        .eq("owner_id", user.id)
+        .eq("status", "completed")
+        .not("deposit_released_at", "is", null)
+        .maybeSingle();
+
+      if (completedRental) return json({ success: true, alreadyCompleted: true });
+
+      return json({ error: "Rental not found or not authorized" }, 404);
+    }
 
     const errors: string[] = [];
 
@@ -71,20 +85,13 @@ Deno.serve(async (req) => {
       return json({ error: errors.join("; ") }, 500);
     }
 
-    // Mark rental completed
-    await supabase
-      .from("rentals")
-      .update({ status: "completed" })
-      .eq("id", rental_id);
-
-    // Credit owner's earnings (rental price minus commission)
-    const ownerEarnings = (rental.total_price ?? 0) - (rental.commission_amount ?? 0);
-    await supabase.rpc("increment_owner_earnings", {
-      p_owner_id: rental.owner_id,
-      p_amount: ownerEarnings,
+    const { data: completedNow, error: completeError } = await supabase.rpc("complete_rental_return", {
+      p_rental_id: rental.id,
+      p_owner_id: user.id,
     });
+    if (completeError) return json({ error: completeError.message }, 500);
 
-    return json({ success: true });
+    return json({ success: true, alreadyCompleted: completedNow === false });
   } catch (err: any) {
     console.error("release-deposit error:", err);
     return json({ error: err.message ?? "Internal error" }, 500);
