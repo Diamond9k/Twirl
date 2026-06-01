@@ -11,6 +11,15 @@ const isExpoGo = Constants.appOwnership === "expo";
 
 type PayButtonProps = { agreed: boolean; loading: boolean; totalPrice: number; onPress: () => void };
 
+function edgeFunctionUrl(functionName: string) {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL;
+  const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const base = apiUrl?.includes("/functions/v1")
+    ? apiUrl
+    : `${apiUrl ?? supabaseUrl}/functions/v1`;
+  return `${base.replace(/\/$/, "")}/${functionName}`;
+}
+
 function StripePayButton({ agreed, loading, totalPrice, onPress }: PayButtonProps) {
   return (
     <TouchableOpacity
@@ -48,24 +57,45 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
   async function handleAgreeAndPay() {
     setLoading(true);
     try {
+      if (!user) throw new Error("Not logged in");
       const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
+      if (!session) throw new Error("Not logged in");
+
+      const response = await fetch(edgeFunctionUrl("create-payment-intent"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const { paymentIntentClientSecret, depositIntentClientSecret, error } = await response.json();
+      if (!response.ok || error) throw new Error(error ?? "Could not start payment");
+      if (!paymentIntentClientSecret) throw new Error("Missing payment authorization");
+
       const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
       if (initError) throw new Error(initError.message);
       const { error: presentError } = await presentPaymentSheet();
       if (presentError) throw new Error(presentError.message);
-      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
+
+      if (depositIntentClientSecret) {
+        const { error: depositInitError } = await initPaymentSheet({ paymentIntentClientSecret: depositIntentClientSecret, merchantDisplayName: "Twirl Deposit", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
+        if (depositInitError) throw new Error(depositInitError.message);
+        const { error: depositPresentError } = await presentPaymentSheet();
+        if (depositPresentError) throw new Error(depositPresentError.message);
+      }
+
+      const confirmResponse = await fetch(edgeFunctionUrl("confirm-rental-payment"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session.access_token}` },
+        body: JSON.stringify({ rental_id: rental.id }),
+      });
+      const confirmBody = await confirmResponse.json();
+      if (!confirmResponse.ok || confirmBody.error) throw new Error(confirmBody.error ?? "Could not confirm payment");
+
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Payment failed", e.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return <StripePayButton agreed={agreed} loading={loading} totalPrice={rental.total_price} onPress={handleAgreeAndPay} />;
