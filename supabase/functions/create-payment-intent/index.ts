@@ -30,54 +30,53 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { rental_id, amount, deposit } = await req.json();
-    if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
+    const { rental_id } = await req.json();
+    if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
-    // Verify rental belongs to this user and is still pending
+    // Verify rental belongs to this user and is awaiting payment.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
       .select("id, renter_id, status, total_price, deposit_amount")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
-      .eq("status", "pending")
+      .in("status", ["pending", "approved"])
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
 
-    // Create PaymentIntent for rental amount (manual capture — charge on handoff)
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency: "usd",
-      capture_method: "manual",
-      metadata: { rental_id, type: "rental", user_id: user.id },
-    });
+    const rentalAmount = toStripeAmount(rental.total_price);
+    const depositAmount = toStripeAmount(rental.deposit_amount ?? 0);
+    const authorizationAmount = rentalAmount + depositAmount;
 
-    // Create PaymentIntent for deposit (manual capture — hold, release on safe return)
-    let depositIntentClientSecret: string | null = null;
-    if (deposit && deposit > 0) {
-      const depositIntent = await stripe.paymentIntents.create({
-        amount: deposit,
-        currency: "usd",
-        capture_method: "manual",
-        metadata: { rental_id, type: "deposit", user_id: user.id },
-      });
-      depositIntentClientSecret = depositIntent.client_secret;
-
-      await supabase
-        .from("rentals")
-        .update({ stripe_deposit_intent: depositIntent.id })
-        .eq("id", rental_id);
+    if (rentalAmount <= 0 || authorizationAmount <= 0) {
+      return json({ error: "Invalid rental amount" }, 400);
     }
 
+    // Authorize rental + deposit server-side. On return we capture only the rental fee
+    // for good-condition returns, which releases the remaining deposit hold.
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: authorizationAmount,
+      currency: "usd",
+      capture_method: "manual",
+      metadata: {
+        rental_id,
+        type: "rental_with_deposit_hold",
+        user_id: user.id,
+        rental_amount: String(rentalAmount),
+        deposit_amount: String(depositAmount),
+      },
+    });
+
     // Store payment intent ID on rental
-    await supabase
+    const { error: updateError } = await supabase
       .from("rentals")
-      .update({ stripe_payment_intent: paymentIntent.id })
+      .update({ stripe_payment_intent: paymentIntent.id, stripe_deposit_intent: null })
       .eq("id", rental_id);
+    if (updateError) throw updateError;
 
     return json({
       paymentIntentClientSecret: paymentIntent.client_secret,
-      depositIntentClientSecret,
+      depositIntentClientSecret: null,
     });
   } catch (err: any) {
     console.error("create-payment-intent error:", err);
@@ -93,4 +92,10 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+function toStripeAmount(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return 0;
+  return Math.round(numberValue * 100);
 }

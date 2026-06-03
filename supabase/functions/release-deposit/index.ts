@@ -30,29 +30,49 @@ Deno.serve(async (req) => {
     // Verify rental belongs to this owner and is active
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("id, owner_id, renter_id, status, total_price, commission_amount, stripe_payment_intent, stripe_deposit_intent")
+      .select("id, owner_id, renter_id, status, total_price, commission_amount, deposit_amount, stripe_payment_intent, stripe_deposit_intent")
       .eq("id", rental_id)
       .eq("owner_id", user.id)
       .eq("status", "active")
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
-
-    const errors: string[] = [];
-
-    // Capture the rental payment (actually charge the renter)
-    if (rental.stripe_payment_intent) {
-      try {
-        await stripe.paymentIntents.capture(rental.stripe_payment_intent);
-      } catch (err: any) {
-        // Already captured is fine
-        if (!err.message?.includes("already been captured")) {
-          errors.push(`Capture failed: ${err.message}`);
-        }
-      }
+    if (!rental.stripe_payment_intent) {
+      return json({ error: "Rental has no payment authorization" }, 409);
     }
 
-    // Cancel/refund the deposit hold (release it back to renter)
+    const errors: string[] = [];
+    const expectedRentalAmount = toStripeAmount(rental.total_price);
+    const expectedDepositAmount = toStripeAmount(rental.deposit_amount ?? 0);
+    if (expectedRentalAmount <= 0) {
+      return json({ error: "Invalid rental amount" }, 409);
+    }
+
+    let capturedPayment = await stripe.paymentIntents.retrieve(rental.stripe_payment_intent);
+    const expectedAuthorizationAmount =
+      expectedRentalAmount + (rental.stripe_deposit_intent ? 0 : expectedDepositAmount);
+    if (capturedPayment.currency !== "usd" || capturedPayment.amount < expectedAuthorizationAmount) {
+      return json({ error: "Payment authorization does not match rental amount" }, 409);
+    }
+
+    // Capture only the rental fee; any extra authorized amount is the deposit hold.
+    try {
+      if (capturedPayment.status === "requires_capture") {
+        capturedPayment = await stripe.paymentIntents.capture(rental.stripe_payment_intent, {
+          amount_to_capture: expectedRentalAmount,
+        });
+      } else if (capturedPayment.status !== "succeeded") {
+        errors.push(`Payment is not capturable: ${capturedPayment.status}`);
+      }
+    } catch (err: any) {
+      errors.push(`Capture failed: ${err.message}`);
+    }
+
+    if (capturedPayment.status !== "succeeded" || capturedPayment.amount_received < expectedRentalAmount) {
+      errors.push("Payment capture did not complete");
+    }
+
+    // Release legacy standalone deposit holds, if any exist from older requests.
     if (rental.stripe_deposit_intent) {
       try {
         const depositIntent = await stripe.paymentIntents.retrieve(rental.stripe_deposit_intent);
@@ -71,11 +91,22 @@ Deno.serve(async (req) => {
       return json({ error: errors.join("; ") }, 500);
     }
 
-    // Mark rental completed
-    await supabase
+    // Mark rental completed first with a status guard. Earnings are credited only if
+    // this request wins the active -> completed transition.
+    const { data: completedRental, error: completeError } = await supabase
       .from("rentals")
-      .update({ status: "completed" })
-      .eq("id", rental_id);
+      .update({
+        status: "completed",
+        return_confirmed_at: new Date().toISOString(),
+        deposit_released_at: new Date().toISOString(),
+      })
+      .eq("id", rental_id)
+      .eq("status", "active")
+      .select("id")
+      .single();
+    if (completeError || !completedRental) {
+      return json({ error: "Rental was already completed or changed status" }, 409);
+    }
 
     // Credit owner's earnings (rental price minus commission)
     const ownerEarnings = (rental.total_price ?? 0) - (rental.commission_amount ?? 0);
@@ -100,4 +131,10 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Headers": "authorization, content-type",
     },
   });
+}
+
+function toStripeAmount(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(numberValue)) return 0;
+  return Math.round(numberValue * 100);
 }
