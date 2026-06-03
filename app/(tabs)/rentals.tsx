@@ -4,6 +4,7 @@ import { useFocusEffect } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBar } from "expo-status-bar";
+import { getFunctionsBaseUrl } from "@/lib/functionsUrl";
 
 type Rental = {
   id: string;
@@ -107,8 +108,8 @@ export default function RentalsScreen() {
         setActionLoading(rental.id);
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
-          const res = await fetch(`${apiUrl}/functions/v1/release-deposit`, {
+          const functionsUrl = getFunctionsBaseUrl();
+          const res = await fetch(`${functionsUrl}/release-deposit`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",

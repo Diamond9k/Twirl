@@ -55,6 +55,30 @@ create trigger profiles_updated_at before update on profiles
 create index idx_profiles_school on profiles(school);
 create index idx_profiles_rating on profiles(rating desc);
 
+create or replace function increment_owner_earnings(p_owner_id uuid, p_amount numeric)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_amount <= 0 then
+    raise exception 'Owner earnings increment must be positive';
+  end if;
+
+  update profiles
+  set
+    total_earnings = total_earnings + p_amount,
+    total_rentals  = total_rentals + 1
+  where id = p_owner_id;
+end;
+$$;
+
+revoke all on function increment_owner_earnings(uuid, numeric) from public;
+revoke all on function increment_owner_earnings(uuid, numeric) from anon;
+revoke all on function increment_owner_earnings(uuid, numeric) from authenticated;
+grant execute on function increment_owner_earnings(uuid, numeric) to service_role;
+
 -- ─── ITEMS ──────────────────────────────────────────────────────────────────
 
 create table items (
@@ -196,8 +220,66 @@ create policy "Rental parties see rentals"    on rentals for select using (auth.
 create policy "Renters create rentals"        on rentals for insert with check (auth.uid() = renter_id and renter_id <> owner_id);
 create policy "Rental parties update rentals" on rentals for update using (auth.uid() = renter_id or auth.uid() = owner_id);
 
+create or replace function enforce_rental_client_transition()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  current_uid uuid := auth.uid();
+  current_role text := auth.role();
+begin
+  if current_role = 'service_role' then
+    return new;
+  end if;
+
+  if
+    new.item_id is distinct from old.item_id or
+    new.renter_id is distinct from old.renter_id or
+    new.owner_id is distinct from old.owner_id or
+    new.conversation_id is distinct from old.conversation_id or
+    new.start_date is distinct from old.start_date or
+    new.end_date is distinct from old.end_date or
+    new.total_price is distinct from old.total_price or
+    new.commission_amount is distinct from old.commission_amount or
+    new.deposit_amount is distinct from old.deposit_amount or
+    new.stripe_payment_intent is distinct from old.stripe_payment_intent or
+    new.stripe_deposit_intent is distinct from old.stripe_deposit_intent or
+    new.contract_agreed is distinct from old.contract_agreed or
+    new.contract_agreed_at is distinct from old.contract_agreed_at or
+    new.return_confirmed_at is distinct from old.return_confirmed_at or
+    new.deposit_released_at is distinct from old.deposit_released_at
+  then
+    raise exception 'Rental payment fields are server-managed';
+  end if;
+
+  if new.status = old.status then
+    return new;
+  end if;
+
+  if current_uid = old.owner_id then
+    if old.status = 'pending' and new.status in ('approved', 'cancelled') then
+      return new;
+    end if;
+
+    if old.status = 'paid' and new.status = 'active' then
+      return new;
+    end if;
+  end if;
+
+  if current_uid = old.renter_id and old.status in ('pending', 'approved') and new.status = 'cancelled' then
+    return new;
+  end if;
+
+  raise exception 'Invalid rental status transition';
+end;
+$$;
+
 create trigger rentals_updated_at before update on rentals
   for each row execute function set_updated_at();
+create trigger enforce_rental_client_transition before update on rentals
+  for each row execute function enforce_rental_client_transition();
 
 create index idx_rentals_renter on rentals(renter_id);
 create index idx_rentals_owner  on rentals(owner_id);
