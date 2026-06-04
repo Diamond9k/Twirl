@@ -12,6 +12,7 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { Avatar } from "@/components/twirl/Avatar";
 import { StatusBar } from "expo-status-bar";
 
 type Message = {
@@ -23,7 +24,7 @@ type Message = {
 
 type ConversationMeta = {
   user1_id: string;
-  other_user: { id: string; full_name: string };
+  other_user: { id: string; full_name: string; avatar_url: string | null };
   item: { title: string } | null;
 };
 
@@ -62,7 +63,7 @@ export default function ConversationScreen() {
     const [{ data: conv }, { data: msgs }] = await Promise.all([
       supabase
         .from("conversations")
-        .select("user1_id, user2_id, items(title), user1:profiles!user1_id(id, full_name), user2:profiles!user2_id(id, full_name)")
+        .select("user1_id, user2_id, items(title), user1:profiles!user1_id(id, full_name, avatar_url), user2:profiles!user2_id(id, full_name, avatar_url)")
         .eq("id", id)
         .single(),
       supabase
@@ -150,6 +151,7 @@ export default function ConversationScreen() {
         <TouchableOpacity onPress={() => router.back()} className="w-8 h-8 items-center justify-center">
           <Text className="text-twirl-text text-xl">←</Text>
         </TouchableOpacity>
+        <Avatar uri={meta?.other_user?.avatar_url} size={36} />
         <View className="flex-1">
           <Text className="text-twirl-text text-xl" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>
             {meta?.other_user?.full_name ?? "..."}

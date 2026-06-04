@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, FlatList, Linking, Alert } fr
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
 import { ItemCard } from "@/components/cards/ItemCard";
+import { Avatar } from "@/components/twirl/Avatar";
 import { useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -16,6 +17,7 @@ type Profile = {
   total_rentals: number;
   total_earnings: number;
   stripe_account_id: string | null;
+  avatar_url: string | null;
 };
 
 export default function ProfileScreen() {
@@ -60,9 +62,7 @@ export default function ProfileScreen() {
       <ScrollView>
         <View className="bg-twirl-blush px-5 pb-6 border-b border-twirl-line" style={{ paddingTop: insets.top + 12 }}>
           <View className="flex-row items-center gap-4">
-            <View className="w-16 h-16 rounded-full bg-twirl-paper border border-twirl-line items-center justify-center">
-              <Text className="text-3xl">👤</Text>
-            </View>
+            <Avatar uri={profile?.avatar_url} size={64} />
             <View className="flex-1">
               <Text className="text-twirl-text text-3xl" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>{profile?.full_name ?? "..."}</Text>
               <Text className="text-twirl-muted text-sm">{profile?.school}</Text>

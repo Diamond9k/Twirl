@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { COMMISSION_RATE } from "@/lib/constants";
 import { StatusBar } from "expo-status-bar";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Avatar } from "@/components/twirl/Avatar";
 
 const { width } = Dimensions.get("window");
 
@@ -21,7 +22,7 @@ type Item = {
   images: string[];
   available: boolean;
   owner_id: string;
-  profiles: { full_name: string; school: string; sorority: string; rating: number };
+  profiles: { full_name: string; school: string; sorority: string; rating: number; avatar_url: string | null };
 };
 
 export default function ItemDetailScreen() {
@@ -37,7 +38,7 @@ export default function ItemDetailScreen() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.from("items").select("*, profiles(full_name, school, sorority, rating)").eq("id", id).single().then(({ data }) => setItem(data));
+    supabase.from("items").select("*, profiles(full_name, school, sorority, rating, avatar_url)").eq("id", id).single().then(({ data }) => setItem(data));
   }, [id]);
 
   const days = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000));
@@ -150,9 +151,7 @@ export default function ItemDetailScreen() {
           ) : null}
 
           <View className="bg-twirl-cream border border-twirl-line rounded-2xl p-4 mt-4 flex-row items-center gap-3">
-            <View className="w-10 h-10 rounded-full bg-white items-center justify-center">
-              <Text>👤</Text>
-            </View>
+            <Avatar uri={item.profiles?.avatar_url} size={40} />
             <View>
               <Text className="text-twirl-text font-semibold">{item.profiles?.full_name}</Text>
               <Text className="text-twirl-muted text-xs">{item.profiles?.school}</Text>

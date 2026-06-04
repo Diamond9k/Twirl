@@ -3,12 +3,13 @@ import { View, Text, FlatList, TouchableOpacity, RefreshControl } from "react-na
 import { useFocusEffect, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { Avatar } from "@/components/twirl/Avatar";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Conversation = {
   id: string;
-  other_user: { id: string; full_name: string };
+  other_user: { id: string; full_name: string; avatar_url: string | null };
   last_message: string;
   last_message_at: string;
   unread_count: number;
@@ -24,8 +25,8 @@ type RawConversation = {
   unread_user1: number;
   unread_user2: number;
   items: { title: string } | null;
-  user1: { id: string; full_name: string };
-  user2: { id: string; full_name: string };
+  user1: { id: string; full_name: string; avatar_url: string | null };
+  user2: { id: string; full_name: string; avatar_url: string | null };
 };
 
 export default function MessagesScreen() {
@@ -43,8 +44,8 @@ export default function MessagesScreen() {
         id, user1_id, user2_id, last_message, last_message_at,
         unread_user1, unread_user2,
         items(title),
-        user1:profiles!user1_id(id, full_name),
-        user2:profiles!user2_id(id, full_name)
+        user1:profiles!user1_id(id, full_name, avatar_url),
+        user2:profiles!user2_id(id, full_name, avatar_url)
       `)
       .or(`user1_id.eq.${user!.id},user2_id.eq.${user!.id}`)
       .order("last_message_at", { ascending: false });
@@ -89,9 +90,7 @@ export default function MessagesScreen() {
             onPress={() => router.push(`/conversation/${c.id}`)}
             className="bg-twirl-paper px-5 py-4 border-b border-twirl-line flex-row items-center gap-3"
           >
-            <View className="w-12 h-12 rounded-full bg-twirl-blush border border-twirl-line items-center justify-center">
-              <Text className="text-2xl">👤</Text>
-            </View>
+            <Avatar uri={c.other_user?.avatar_url} size={48} />
             <View className="flex-1">
               <View className="flex-row items-center justify-between">
                 <Text className="text-twirl-text text-lg" style={{ fontFamily: "CormorantGaramond_500Medium_Italic" }}>{c.other_user?.full_name}</Text>
