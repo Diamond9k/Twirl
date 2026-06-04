@@ -4,6 +4,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { SIZES, OCCASIONS, CATEGORIES } from "@/lib/constants";
+import { PickerField } from "@/components/twirl/PickerField";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -21,10 +22,6 @@ export default function ListItemScreen() {
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const cycleValue = (values: string[], current: string) => {
-    const index = values.indexOf(current);
-    return values[(index + 1) % values.length];
-  };
 
   async function pickImages() {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -164,26 +161,9 @@ export default function ListItemScreen() {
           </View>
         </View>
 
-        <View>
-          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Size</Text>
-          <TouchableOpacity onPress={() => setSize(cycleValue(SIZES, size))} className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3">
-            <Text className="text-twirl-text">{size}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View>
-          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Occasion</Text>
-          <TouchableOpacity onPress={() => setOccasion(cycleValue(OCCASIONS, occasion))} className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3">
-            <Text className="text-twirl-text">{occasion}</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View>
-          <Text className="text-twirl-ink2 text-[10px] tracking-[2px] uppercase mb-2">Category</Text>
-          <TouchableOpacity onPress={() => setCategory(cycleValue(CATEGORIES, category))} className="bg-twirl-paper border border-twirl-line rounded-xl px-4 py-3">
-            <Text className="text-twirl-text">{category}</Text>
-          </TouchableOpacity>
-        </View>
+        <PickerField label="Size" value={size} options={SIZES} onChange={setSize} />
+        <PickerField label="Occasion" value={occasion} options={OCCASIONS} onChange={setOccasion} />
+        <PickerField label="Category" value={category} options={CATEGORIES} onChange={setCategory} />
 
         <TouchableOpacity
           onPress={handleSubmit}
