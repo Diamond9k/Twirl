@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TouchableOpacity, Alert, Image } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
-import { useAuth } from "@/hooks/useAuth";
 import { useStripe } from "@stripe/stripe-react-native";
 import Constants from "expo-constants";
 import { StatusBar } from "expo-status-bar";
@@ -41,7 +40,12 @@ function PreviewPayButton({ agreed, totalPrice }: Omit<PayButtonProps, "loading"
   );
 }
 
-function ContractPaySection({ rental, agreed, user, router }: any) {
+function edgeFunctionUrl(name: string) {
+  const baseUrl = process.env.EXPO_PUBLIC_API_URL ?? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
+  return `${baseUrl}/${name}`;
+}
+
+function ContractPaySection({ rental, agreed, router }: any) {
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loading, setLoading] = useState(false);
 
@@ -49,23 +53,46 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/create-payment-intent`, {
+      const response = await fetch(edgeFunctionUrl("create-payment-intent"), {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
-      const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
-      if (initError) throw new Error(initError.message);
-      const { error: presentError } = await presentPaymentSheet();
-      if (presentError) throw new Error(presentError.message);
-      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
+      const intentBody = await response.json();
+      if (!response.ok) throw new Error(intentBody.error ?? "Could not start payment");
+
+      await presentIntent(intentBody.paymentIntentClientSecret, "rental payment");
+      if (intentBody.depositIntentClientSecret) {
+        await presentIntent(intentBody.depositIntentClientSecret, "security deposit hold");
+      }
+
+      const confirmResponse = await fetch(edgeFunctionUrl("confirm-payment"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ rental_id: rental.id }),
+      });
+      const confirmBody = await confirmResponse.json();
+      if (!confirmResponse.ok) throw new Error(confirmBody.error ?? "Could not confirm payment");
+
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Payment failed", e.message);
     }
     setLoading(false);
+  }
+
+  async function presentIntent(clientSecret: string, label: string) {
+    const { error: initError } = await initPaymentSheet({
+      paymentIntentClientSecret: clientSecret,
+      merchantDisplayName: "Twirl",
+      applePay: { merchantCountryCode: "US" },
+      googlePay: { merchantCountryCode: "US", testEnv: true },
+      style: "alwaysLight",
+    });
+    if (initError) throw new Error(`${label}: ${initError.message}`);
+
+    const { error: presentError } = await presentPaymentSheet();
+    if (presentError) throw new Error(`${label}: ${presentError.message}`);
   }
 
   return <StripePayButton agreed={agreed} loading={loading} totalPrice={rental.total_price} onPress={handleAgreeAndPay} />;
@@ -74,7 +101,6 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
 export default function ContractScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { user } = useAuth();
   const [rental, setRental] = useState<any>(null);
   const [agreed, setAgreed] = useState(false);
 
@@ -178,10 +204,19 @@ export default function ContractScreen() {
           </Text>
         </TouchableOpacity>
 
-        {isExpoGo
-          ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
-          : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
-        }
+        {rental.status !== "approved" ? (
+          <View className="bg-twirl-blush border border-twirl-line rounded-2xl p-4 mb-8">
+            <Text className="text-twirl-text text-sm text-center">
+              {rental.status === "pending"
+                ? "Waiting for the owner to approve this request before payment."
+                : "Payment is not available for this rental status."}
+            </Text>
+          </View>
+        ) : isExpoGo ? (
+          <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
+        ) : (
+          <ContractPaySection rental={rental} agreed={agreed} router={router} />
+        )}
       </ScrollView>
     </View>
   );

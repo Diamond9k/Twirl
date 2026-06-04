@@ -57,7 +57,7 @@ export default function ItemDetailScreen() {
         last_message_at: new Date().toISOString(),
       }).select().single();
 
-      const { data: rentalData } = await supabase.from("rentals").insert({
+      const { error: rentalError } = await supabase.from("rentals").insert({
         item_id: item.id,
         renter_id: user.id,
         owner_id: item.owner_id,
@@ -68,7 +68,8 @@ export default function ItemDetailScreen() {
         deposit_amount: item.deposit,
         status: "pending",
         conversation_id: convo?.id,
-      }).select().single();
+      });
+      if (rentalError) throw rentalError;
 
       await supabase.from("messages").insert({
         conversation_id: convo?.id,
@@ -76,7 +77,8 @@ export default function ItemDetailScreen() {
         content: `Rental request for ${item.title} · ${startDate.toLocaleDateString()} → ${endDate.toLocaleDateString()} · $${total}`,
       });
 
-      router.push(`/contract/${rentalData.id}`);
+      Alert.alert("Request sent", "The owner will approve your request before payment.");
+      router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Error", e.message);
     }
