@@ -109,8 +109,7 @@ export default function RentalsScreen() {
         setActionLoading(rental.id);
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
-          const res = await fetch(`${apiUrl}/functions/v1/release-deposit`, {
+          const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/release-deposit`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
