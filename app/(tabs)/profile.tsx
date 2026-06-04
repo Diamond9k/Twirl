@@ -51,6 +51,38 @@ export default function ProfileScreen() {
     }
   }
 
+  function deleteAccount() {
+    Alert.alert(
+      "Delete account",
+      "This permanently deletes your account, listings, rentals, and messages. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) { Alert.alert("Error", "Not logged in"); return; }
+              const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/delete-account`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${session.access_token}`,
+                },
+              });
+              const body = await res.json();
+              if (!res.ok) throw new Error(body.error ?? "Failed to delete account");
+              await signOut();
+            } catch (err: any) {
+              Alert.alert("Error", err.message ?? "Could not delete account");
+            }
+          },
+        },
+      ]
+    );
+  }
+
   useEffect(() => {
     if (!user) return;
     supabase.from("profiles").select("*").eq("id", user.id).single().then(({ data }) => setProfile(data));
@@ -138,6 +170,10 @@ export default function ProfileScreen() {
             </View>
           )}
         </View>
+
+        <TouchableOpacity onPress={deleteAccount} style={{ alignItems: "center", marginTop: 24, marginBottom: 40 }}>
+          <Text style={{ color: "#B84565", fontSize: 13 }}>delete account</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
