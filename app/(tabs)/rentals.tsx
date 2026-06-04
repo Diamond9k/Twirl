@@ -3,11 +3,13 @@ import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl, Alert, A
 import { useFocusEffect, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
+import { ReviewModal } from "@/components/twirl/ReviewModal";
 import { StatusBar } from "expo-status-bar";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type Rental = {
   id: string;
+  owner_id: string;
   status: string;
   start_date: string;
   end_date: string;
@@ -42,6 +44,8 @@ export default function RentalsScreen() {
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [reviewedIds, setReviewedIds] = useState<Set<string>>(new Set());
+  const [reviewTarget, setReviewTarget] = useState<Rental | null>(null);
 
   async function fetchRentals() {
     setLoading(true);
@@ -52,6 +56,8 @@ export default function RentalsScreen() {
       .eq(field, user!.id)
       .order("created_at", { ascending: false });
     setRentals(data ?? []);
+    const { data: reviewed } = await supabase.from("reviews").select("rental_id").eq("reviewer_id", user!.id);
+    setReviewedIds(new Set((reviewed ?? []).map((r) => r.rental_id as string)));
     setLoading(false);
   }
 
@@ -216,6 +222,23 @@ export default function RentalsScreen() {
           </View>
         );
       }
+      if (rental.status === "completed") {
+        if (reviewedIds.has(rental.id)) {
+          return (
+            <View style={{ marginTop: 10, backgroundColor: "#F3F4F6", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}>
+              <Text style={{ color: "#6B7280", fontSize: 12, textAlign: "center" }}>Review submitted ✓</Text>
+            </View>
+          );
+        }
+        return (
+          <TouchableOpacity
+            onPress={() => setReviewTarget(rental)}
+            style={{ marginTop: 10, backgroundColor: COLORS.rose, borderRadius: 12, paddingVertical: 12, alignItems: "center" }}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, letterSpacing: 1, fontWeight: "600" }}>LEAVE A REVIEW</Text>
+          </TouchableOpacity>
+        );
+      }
     }
 
     return null;
@@ -282,6 +305,21 @@ export default function RentalsScreen() {
           </View>
         )}
       />
+
+      {reviewTarget && (
+        <ReviewModal
+          visible={!!reviewTarget}
+          rentalId={reviewTarget.id}
+          reviewerId={user!.id}
+          revieweeId={reviewTarget.owner_id}
+          revieweeName={reviewTarget.owner?.full_name ?? "the lender"}
+          onClose={() => setReviewTarget(null)}
+          onSubmitted={(rid) => {
+            setReviewedIds((prev) => new Set(prev).add(rid));
+            setReviewTarget(null);
+          }}
+        />
+      )}
     </View>
   );
 }

@@ -26,6 +26,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [myItems, setMyItems] = useState<any[]>([]);
+  const [reviewAvg, setReviewAvg] = useState<number | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
 
   async function setupPayouts() {
@@ -54,6 +55,14 @@ export default function ProfileScreen() {
     if (!user) return;
     supabase.from("profiles").select("*").eq("id", user.id).single().then(({ data }) => setProfile(data));
     supabase.from("items").select("*").eq("owner_id", user.id).order("created_at", { ascending: false }).then(({ data }) => setMyItems(data ?? []));
+    supabase.from("reviews").select("stars").eq("reviewee_id", user.id).then(({ data }) => {
+      if (data && data.length) {
+        const avg = data.reduce((sum, r) => sum + (r.stars ?? 0), 0) / data.length;
+        setReviewAvg(Math.round(avg * 10) / 10);
+      } else {
+        setReviewAvg(null);
+      }
+    });
   }, [user]);
 
   return (
@@ -78,7 +87,7 @@ export default function ProfileScreen() {
               { label: "size", value: profile?.size ?? "—" },
               { label: "rentals", value: String(profile?.total_rentals ?? 0) },
               { label: "earned", value: `$${profile?.total_earnings ?? 0}` },
-              { label: "rating", value: profile?.rating ? `${profile.rating}★` : "—" },
+              { label: "rating", value: reviewAvg != null ? `${reviewAvg}★` : "—" },
             ].map(stat => (
               <View key={stat.label} className="flex-1 bg-twirl-paper border border-twirl-line rounded-2xl py-3 items-center">
                 <Text className="text-twirl-text text-base">{stat.value}</Text>
