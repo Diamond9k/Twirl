@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { View, Text, ScrollView, TextInput, TouchableOpacity, FlatList, RefreshControl } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ItemCard } from "@/components/cards/ItemCard";
 import { StatusBar } from "expo-status-bar";
 import { useAuth } from "@/hooks/useAuth";
@@ -35,6 +36,7 @@ export default function BrowseScreen() {
   const [filter, setFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [showPayoutNudge, setShowPayoutNudge] = useState(false);
 
   async function fetchItems() {
     setLoading(true);
@@ -56,6 +58,22 @@ export default function BrowseScreen() {
   }
 
   useEffect(() => { fetchItems(); }, [filter]);
+
+  // One-time payout nudge: only if not yet connected and never shown before.
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const seen = await AsyncStorage.getItem("twirl:payoutPromptSeen");
+      if (seen) return;
+      const { data } = await supabase.from("profiles").select("stripe_account_id").eq("id", user.id).single();
+      if (data && !data.stripe_account_id) setShowPayoutNudge(true);
+    })();
+  }, [user?.id]);
+
+  async function dismissPayoutNudge() {
+    setShowPayoutNudge(false);
+    await AsyncStorage.setItem("twirl:payoutPromptSeen", "1");
+  }
 
   const filteredItems = searchQuery.trim()
     ? items.filter(i => {
@@ -95,6 +113,21 @@ export default function BrowseScreen() {
           style={{ backgroundColor: "#FDFAF4", borderRadius: 999, borderWidth: 0.5, borderColor: "#E8DDD4", paddingVertical: 11, paddingHorizontal: 18, fontFamily: "CormorantGaramond_500Medium_Italic", fontSize: 17, color: "#2A1F26", letterSpacing: -0.1 }}
         />
       </View>
+
+      {showPayoutNudge && (
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginHorizontal: 20, marginTop: 14, backgroundColor: "#F7E4DE", borderWidth: 0.5, borderColor: "#E8DDD4", borderRadius: 16, paddingVertical: 12, paddingHorizontal: 14 }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: "CormorantGaramond_500Medium_Italic", fontSize: 18, color: "#2A1F26" }}>Get paid for lending</Text>
+            <Text style={{ fontFamily: "Inter_400Regular", fontSize: 12, color: "#5A4A54", marginTop: 1 }}>Connect your bank to receive payouts.</Text>
+          </View>
+          <TouchableOpacity onPress={() => { dismissPayoutNudge(); router.push("/(tabs)/profile"); }} style={{ backgroundColor: "#B84565", borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 }}>
+            <Text style={{ color: "#fff", fontFamily: "JetBrainsMono_500Medium", fontSize: 10, letterSpacing: 1 }}>SET UP</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={dismissPayoutNudge} hitSlop={8}>
+            <Text style={{ color: "#A89AA0", fontSize: 16 }}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Filter chips */}
       <ScrollView
