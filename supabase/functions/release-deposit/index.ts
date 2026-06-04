@@ -30,30 +30,36 @@ Deno.serve(async (req) => {
     // Verify rental belongs to this owner and is active
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("id, owner_id, renter_id, status, total_price, commission_amount, stripe_payment_intent, stripe_deposit_intent")
+      .select("id, owner_id, renter_id, status, total_price, commission_amount, deposit_amount, stripe_payment_intent, stripe_deposit_intent")
       .eq("id", rental_id)
       .eq("owner_id", user.id)
       .eq("status", "active")
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
+    if (!rental.stripe_payment_intent) return json({ error: "Rental payment intent missing" }, 409);
 
     const errors: string[] = [];
 
     // Capture the rental payment (actually charge the renter)
-    if (rental.stripe_payment_intent) {
-      try {
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(rental.stripe_payment_intent);
+      if (paymentIntent.status === "requires_capture") {
         await stripe.paymentIntents.capture(rental.stripe_payment_intent);
-      } catch (err: any) {
-        // Already captured is fine
-        if (!err.message?.includes("already been captured")) {
-          errors.push(`Capture failed: ${err.message}`);
-        }
+      } else if (paymentIntent.status !== "succeeded") {
+        errors.push(`Payment is not capturable (${paymentIntent.status})`);
+      }
+    } catch (err: any) {
+      // A concurrent return confirmation may have captured first; that is safe to treat as success.
+      if (!err.message?.includes("already been captured")) {
+        errors.push(`Capture failed: ${err.message}`);
       }
     }
 
     // Cancel/refund the deposit hold (release it back to renter)
-    if (rental.stripe_deposit_intent) {
+    if (Number(rental.deposit_amount ?? 0) > 0 && !rental.stripe_deposit_intent) {
+      errors.push("Deposit intent missing");
+    } else if (rental.stripe_deposit_intent) {
       try {
         const depositIntent = await stripe.paymentIntents.retrieve(rental.stripe_deposit_intent);
         if (depositIntent.status === "requires_capture") {
@@ -61,6 +67,8 @@ Deno.serve(async (req) => {
         } else if (depositIntent.status === "succeeded") {
           // Already captured — issue a full refund
           await stripe.refunds.create({ payment_intent: rental.stripe_deposit_intent });
+        } else if (depositIntent.status !== "canceled") {
+          errors.push(`Deposit is not releasable (${depositIntent.status})`);
         }
       } catch (err: any) {
         errors.push(`Deposit release failed: ${err.message}`);
@@ -71,18 +79,12 @@ Deno.serve(async (req) => {
       return json({ error: errors.join("; ") }, 500);
     }
 
-    // Mark rental completed
-    await supabase
-      .from("rentals")
-      .update({ status: "completed" })
-      .eq("id", rental_id);
-
-    // Credit owner's earnings (rental price minus commission)
-    const ownerEarnings = (rental.total_price ?? 0) - (rental.commission_amount ?? 0);
-    await supabase.rpc("increment_owner_earnings", {
+    // Complete the rental and credit earnings in one DB transaction.
+    const { error: completeError } = await supabase.rpc("complete_rental_return", {
+      p_rental_id: rental_id,
       p_owner_id: rental.owner_id,
-      p_amount: ownerEarnings,
     });
+    if (completeError) return json({ error: completeError.message }, 409);
 
     return json({ success: true });
   } catch (err: any) {

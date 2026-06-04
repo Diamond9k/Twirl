@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { View, Text, FlatList, TouchableOpacity, Image, RefreshControl, Alert, ActivityIndicator } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { StatusBar } from "expo-status-bar";
@@ -35,6 +35,7 @@ const COLORS = {
 
 export default function RentalsScreen() {
   const { user } = useAuth();
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("renting");
   const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,7 +56,11 @@ export default function RentalsScreen() {
   useFocusEffect(useCallback(() => { if (user) fetchRentals(); }, [tab, user?.id]));
 
   async function updateStatus(id: string, status: string) {
-    await supabase.from("rentals").update({ status }).eq("id", id);
+    const { error } = await supabase.rpc("transition_rental_status", {
+      p_rental_id: id,
+      p_status: status,
+    });
+    if (error) throw error;
     fetchRentals();
   }
 
@@ -67,7 +72,11 @@ export default function RentalsScreen() {
           text: "Confirm",
           style: "destructive",
           onPress: async () => {
-            await action();
+            try {
+              await action();
+            } catch (err: any) {
+              Alert.alert("Error", err.message ?? "Action failed. Try again.");
+            }
             resolve();
           },
         },
@@ -78,24 +87,33 @@ export default function RentalsScreen() {
   async function handleApprove(rental: Rental) {
     await confirmAction("Approve Request", `Approve rental for ${rental.renter?.full_name}? They'll receive a payment link.`, async () => {
       setActionLoading(rental.id);
-      await updateStatus(rental.id, "approved");
-      setActionLoading(null);
+      try {
+        await updateStatus(rental.id, "approved");
+      } finally {
+        setActionLoading(null);
+      }
     });
   }
 
   async function handleDecline(rental: Rental) {
     await confirmAction("Decline Request", "Decline this rental request?", async () => {
       setActionLoading(rental.id);
-      await updateStatus(rental.id, "cancelled");
-      setActionLoading(null);
+      try {
+        await updateStatus(rental.id, "cancelled");
+      } finally {
+        setActionLoading(null);
+      }
     });
   }
 
   async function handleConfirmHandoff(rental: Rental) {
     await confirmAction("Confirm Handoff", "You've given the item to the renter?", async () => {
       setActionLoading(rental.id);
-      await updateStatus(rental.id, "active");
-      setActionLoading(null);
+      try {
+        await updateStatus(rental.id, "active");
+      } finally {
+        setActionLoading(null);
+      }
     });
   }
 
@@ -107,8 +125,8 @@ export default function RentalsScreen() {
         setActionLoading(rental.id);
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? process.env.EXPO_PUBLIC_SUPABASE_URL;
-          const res = await fetch(`${apiUrl}/functions/v1/release-deposit`, {
+          const apiUrl = process.env.EXPO_PUBLIC_API_URL ?? `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1`;
+          const res = await fetch(`${apiUrl}/release-deposit`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -197,9 +215,12 @@ export default function RentalsScreen() {
     if (!isLending) {
       if (rental.status === "approved") {
         return (
-          <View style={{ marginTop: 10, backgroundColor: "#D1FAE5", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}>
-            <Text style={{ color: "#065F46", fontSize: 12, textAlign: "center" }}>Approved — complete payment to confirm</Text>
-          </View>
+          <TouchableOpacity
+            onPress={() => router.push(`/contract/${rental.id}`)}
+            style={{ marginTop: 10, backgroundColor: COLORS.rose, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, alignItems: "center" }}
+          >
+            <Text style={{ color: "#fff", fontSize: 12, letterSpacing: 1, fontWeight: "600" }}>PAY NOW</Text>
+          </TouchableOpacity>
         );
       }
       if (rental.status === "paid") {
