@@ -12,6 +12,19 @@ security definer
 set search_path = ''
 as $$
 begin
+  if exists (
+    select 1
+    from public.rentals
+    where (
+      owner_id = p_user
+      or renter_id = p_user
+      or item_id in (select id from public.items where owner_id = p_user)
+    )
+    and status not in ('completed', 'cancelled')
+  ) then
+    raise exception using message = 'Cannot delete account while rentals are still in progress. Complete or cancel active rentals first.';
+  end if;
+
   delete from public.reviews
     where reviewer_id = p_user or reviewee_id = p_user;
 
