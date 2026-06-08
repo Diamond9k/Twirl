@@ -52,9 +52,10 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
       const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const { paymentIntentClientSecret, depositIntentClientSecret, error } = await response.json();
+      if (!response.ok || !paymentIntentClientSecret) throw new Error(error ?? "Payment setup failed");
       const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
       if (initError) throw new Error(initError.message);
       const { error: presentError } = await presentPaymentSheet();

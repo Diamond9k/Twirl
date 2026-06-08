@@ -25,7 +25,8 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    // 1. Remove all of the user's rows (transactional, ordered for FK constraints).
+    // 1. Remove the user's rows (transactional, ordered for FK constraints).
+    // The RPC aborts without deleting anything if shared rentals/conversations exist.
     const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user: user.id });
     if (rpcError) return json({ error: rpcError.message }, 500);
 
