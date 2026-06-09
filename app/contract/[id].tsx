@@ -52,15 +52,28 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
       const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
-      const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
+      const { paymentIntentClientSecret, depositIntentClientSecret, error } = await response.json();
+      if (!response.ok) throw new Error(error ?? "Could not start payment");
+      const sheetOptions = { merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" as const };
+      const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, ...sheetOptions });
       if (initError) throw new Error(initError.message);
       const { error: presentError } = await presentPaymentSheet();
       if (presentError) throw new Error(presentError.message);
-      await supabase.from("rental_contracts").insert({ rental_id: rental.id, renter_id: user.id, owner_id: rental.items.owner_id, agreed_at: new Date().toISOString(), deposit_intent_id: depositIntentClientSecret?.split("_secret")[0], terms_version: "1.0" });
-      await supabase.from("rentals").update({ status: "paid", contract_agreed: true }).eq("id", rental.id);
+      if (depositIntentClientSecret) {
+        const { error: depositInitError } = await initPaymentSheet({ paymentIntentClientSecret: depositIntentClientSecret, ...sheetOptions });
+        if (depositInitError) throw new Error(depositInitError.message);
+        const { error: depositPresentError } = await presentPaymentSheet();
+        if (depositPresentError) throw new Error(depositPresentError.message);
+      }
+      const confirmResponse = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/confirm-rental-payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ rental_id: rental.id }),
+      });
+      const confirmBody = await confirmResponse.json();
+      if (!confirmResponse.ok) throw new Error(confirmBody.error ?? "Could not confirm payment");
       router.replace("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Payment failed", e.message);
@@ -89,7 +102,7 @@ export default function ContractScreen() {
 
   if (!rental) return null;
   const item = rental.items;
-  const deposit = item.deposit;
+  const deposit = rental.deposit_amount ?? item.deposit ?? 0;
   const days = Math.ceil((new Date(rental.end_date).getTime() - new Date(rental.start_date).getTime()) / 86400000);
 
   return (
@@ -178,7 +191,12 @@ export default function ContractScreen() {
           </Text>
         </TouchableOpacity>
 
-        {isExpoGo
+        {rental.status !== "approved" ? (
+          <View className="bg-twirl-blush border border-twirl-line rounded-2xl p-4 mb-8">
+            <Text className="text-twirl-text font-semibold">Waiting for owner approval</Text>
+            <Text className="text-twirl-muted text-sm mt-1">Payment opens after the lender approves this rental.</Text>
+          </View>
+        ) : isExpoGo
           ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
           : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
         }
