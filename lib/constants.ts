@@ -30,7 +30,7 @@ export const OCCASIONS = [
   "Day Event",
 ];
 
-export const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "0", "2", "4", "6", "8", "10", "12"];
+export const SIZES = ["XS", "S", "M", "L", "XL", "XXL"];
 
 export const CATEGORIES = ["Dress", "Top", "Skirt", "Pants", "Jacket", "Shoes", "Bag", "Accessories"];
 
