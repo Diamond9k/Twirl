@@ -52,9 +52,11 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
       const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const { paymentIntentClientSecret, depositIntentClientSecret, error } = await response.json();
+      if (!response.ok || error) throw new Error(error ?? "Could not start payment");
+      if (!paymentIntentClientSecret) throw new Error("Payment setup did not return a client secret");
       const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
       if (initError) throw new Error(initError.message);
       const { error: presentError } = await presentPaymentSheet();
@@ -178,10 +180,16 @@ export default function ContractScreen() {
           </Text>
         </TouchableOpacity>
 
-        {isExpoGo
-          ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
-          : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
-        }
+        {rental.status === "approved" ? (
+          isExpoGo
+            ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
+            : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
+        ) : (
+          <View className="bg-twirl-blush border border-twirl-line rounded-2xl p-4 mb-8">
+            <Text className="text-twirl-text font-semibold text-sm">Waiting for lender approval</Text>
+            <Text className="text-twirl-muted text-sm mt-1">You can pay after the lender approves this rental request.</Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
