@@ -203,7 +203,14 @@ export default function RentalsScreen() {
 
     // RENTING (renter) info states
     if (!isLending) {
-      if (rental.status === "pending" || rental.status === "approved") {
+      if (rental.status === "pending") {
+        return (
+          <View style={{ marginTop: 10, backgroundColor: "#FEF3C7", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8 }}>
+            <Text style={{ color: "#92400E", fontSize: 12, textAlign: "center" }}>Waiting for lender approval</Text>
+          </View>
+        );
+      }
+      if (rental.status === "approved") {
         return (
           <TouchableOpacity
             onPress={() => router.push(`/contract/${rental.id}`)}

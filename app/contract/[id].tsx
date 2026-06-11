@@ -52,9 +52,10 @@ function ContractPaySection({ rental, agreed, user, router }: any) {
       const response = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-payment-intent`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ rental_id: rental.id, amount: Math.round(rental.total_price * 100), deposit: Math.round(rental.items.deposit * 100) }),
+        body: JSON.stringify({ rental_id: rental.id }),
       });
-      const { paymentIntentClientSecret, depositIntentClientSecret } = await response.json();
+      const { paymentIntentClientSecret, depositIntentClientSecret, error } = await response.json();
+      if (!response.ok) throw new Error(error ?? "Could not start payment");
       const { error: initError } = await initPaymentSheet({ paymentIntentClientSecret, merchantDisplayName: "Twirl", applePay: { merchantCountryCode: "US" }, googlePay: { merchantCountryCode: "US", testEnv: true }, style: "alwaysLight" });
       if (initError) throw new Error(initError.message);
       const { error: presentError } = await presentPaymentSheet();
@@ -91,6 +92,7 @@ export default function ContractScreen() {
   const item = rental.items;
   const deposit = item.deposit;
   const days = Math.ceil((new Date(rental.end_date).getTime() - new Date(rental.start_date).getTime()) / 86400000);
+  const canPay = rental.status === "approved";
 
   return (
     <View className="flex-1 bg-twirl-paper">
@@ -178,10 +180,22 @@ export default function ContractScreen() {
           </Text>
         </TouchableOpacity>
 
-        {isExpoGo
-          ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
-          : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
-        }
+        {canPay ? (
+          isExpoGo
+            ? <PreviewPayButton agreed={agreed} totalPrice={rental.total_price} />
+            : <ContractPaySection rental={rental} agreed={agreed} user={user} router={router} />
+        ) : (
+          <View className="bg-twirl-blush border border-twirl-line rounded-2xl p-4 mb-8">
+            <Text className="text-twirl-text font-semibold">
+              {rental.status === "pending" ? "Waiting for lender approval" : `Payment unavailable: ${rental.status}`}
+            </Text>
+            <Text className="text-twirl-muted text-sm mt-1">
+              {rental.status === "pending"
+                ? "You can complete payment here after the lender approves this rental."
+                : "Return to your ledger for the latest rental status."}
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );

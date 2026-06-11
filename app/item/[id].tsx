@@ -58,7 +58,7 @@ export default function ItemDetailScreen() {
         last_message_at: new Date().toISOString(),
       }).select().single();
 
-      const { data: rentalData } = await supabase.from("rentals").insert({
+      await supabase.from("rentals").insert({
         item_id: item.id,
         renter_id: user.id,
         owner_id: item.owner_id,
@@ -77,7 +77,8 @@ export default function ItemDetailScreen() {
         content: `Rental request for ${item.title} · ${startDate.toLocaleDateString()} → ${endDate.toLocaleDateString()} · $${total}`,
       });
 
-      router.push(`/contract/${rentalData.id}`);
+      Alert.alert("Request sent", "The lender will review your request before payment.");
+      router.push("/(tabs)/rentals");
     } catch (e: any) {
       Alert.alert("Error", e.message);
     }
