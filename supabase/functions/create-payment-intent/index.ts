@@ -30,19 +30,22 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { rental_id, amount, deposit } = await req.json();
-    if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
+    const { rental_id } = await req.json();
+    if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
-    // Verify rental belongs to this user and is still pending
+    // Verify rental belongs to this user and derive all money from the database.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
       .select("id, renter_id, status, total_price, deposit_amount")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
-      .eq("status", "pending")
+      .in("status", ["pending", "approved"])
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
+
+    const amount = toStripeCents(rental.total_price, "total_price");
+    const deposit = toStripeCents(rental.deposit_amount ?? 0, "deposit_amount", { allowZero: true });
 
     // Create PaymentIntent for rental amount (manual capture — charge on handoff)
     const paymentIntent = await stripe.paymentIntents.create({
@@ -54,7 +57,7 @@ Deno.serve(async (req) => {
 
     // Create PaymentIntent for deposit (manual capture — hold, release on safe return)
     let depositIntentClientSecret: string | null = null;
-    if (deposit && deposit > 0) {
+    if (deposit > 0) {
       const depositIntent = await stripe.paymentIntents.create({
         amount: deposit,
         currency: "usd",
@@ -70,10 +73,11 @@ Deno.serve(async (req) => {
     }
 
     // Store payment intent ID on rental
-    await supabase
+    const { error: updateError } = await supabase
       .from("rentals")
       .update({ stripe_payment_intent: paymentIntent.id })
       .eq("id", rental_id);
+    if (updateError) return json({ error: updateError.message }, 500);
 
     return json({
       paymentIntentClientSecret: paymentIntent.client_secret,
@@ -93,4 +97,16 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+function toStripeCents(value: unknown, field: string, options: { allowZero?: boolean } = {}) {
+  const raw = typeof value === "number" ? value.toFixed(2) : String(value ?? "").trim();
+  const match = raw.match(/^(\d+)(?:\.(\d{1,2}))?$/);
+  if (!match) throw new Error(`Invalid ${field}`);
+
+  const cents = Number(match[1]) * 100 + Number((match[2] ?? "").padEnd(2, "0"));
+  if (!Number.isSafeInteger(cents) || cents < 0 || (!options.allowZero && cents === 0)) {
+    throw new Error(`Invalid ${field}`);
+  }
+  return cents;
 }
