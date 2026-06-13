@@ -22,7 +22,7 @@ $$;
 -- ─── PROFILES ───────────────────────────────────────────────────────────────
 
 create table profiles (
-  id              uuid references auth.users on delete cascade primary key,
+  id              uuid primary key,
   full_name       text not null check (char_length(full_name) between 2 and 80),
   email           text check (is_edu_email(email)),
   school          text check (char_length(school) <= 100),
@@ -38,7 +38,9 @@ create table profiles (
   rating          numeric(3,2) default 0 check (rating between 0 and 5),
   total_rentals   integer default 0 check (total_rentals >= 0),
   total_earnings  numeric(10,2) default 0 check (total_earnings >= 0),
+  stripe_account_id text,
   push_token      text,
+  deleted_at      timestamptz,
   created_at      timestamptz default now(),
   updated_at      timestamptz default now()
 );

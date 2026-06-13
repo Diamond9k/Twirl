@@ -30,27 +30,42 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { rental_id, amount, deposit } = await req.json();
-    if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
+    const { rental_id } = await req.json();
+    if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
-    // Verify rental belongs to this user and is still pending
+    // Verify the rental belongs to this user and is payable.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("id, renter_id, status, total_price, deposit_amount")
+      .select("id, renter_id, status, total_price, commission_amount, deposit_amount, owner:profiles!owner_id(stripe_account_id)")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
-      .eq("status", "pending")
+      .in("status", ["pending", "approved"])
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
 
-    // Create PaymentIntent for rental amount (manual capture — charge on handoff)
-    const paymentIntent = await stripe.paymentIntents.create({
+    const amount = centsFromDollars(rental.total_price);
+    const applicationFeeAmount = centsFromDollars(rental.commission_amount ?? 0);
+    const deposit = centsFromDollars(rental.deposit_amount ?? 0);
+    if (amount <= 0) return json({ error: "Rental amount is invalid" }, 400);
+
+    const ownerProfile = Array.isArray(rental.owner) ? rental.owner[0] : rental.owner;
+    const destination = ownerProfile?.stripe_account_id;
+    if (!destination) return json({ error: "Owner has not set up payouts" }, 409);
+
+    const paymentIntentParams: Record<string, unknown> = {
       amount,
       currency: "usd",
       capture_method: "manual",
+      transfer_data: { destination },
       metadata: { rental_id, type: "rental", user_id: user.id },
-    });
+    };
+    if (applicationFeeAmount > 0) {
+      paymentIntentParams.application_fee_amount = applicationFeeAmount;
+    }
+
+    // Create PaymentIntent for rental amount (manual capture — charge on handoff)
+    const paymentIntent = await stripe.paymentIntents.create(paymentIntentParams as any);
 
     // Create PaymentIntent for deposit (manual capture — hold, release on safe return)
     let depositIntentClientSecret: string | null = null;
@@ -93,4 +108,10 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+function centsFromDollars(value: number | string | null): number {
+  const parsed = typeof value === "string" ? Number(value) : value ?? 0;
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.round(parsed * 100);
 }
