@@ -54,7 +54,7 @@ export default function ProfileScreen() {
   function deleteAccount() {
     Alert.alert(
       "Delete account",
-      "This permanently deletes your account, listings, rentals, and messages. This cannot be undone.",
+      "This permanently deletes your account and personal data. Shared transaction records are anonymized and retained where required. This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {

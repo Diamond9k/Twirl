@@ -38,17 +38,24 @@ Deno.serve(async (req) => {
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
 
+    if (!rental.stripe_payment_intent) {
+      return json({ error: "Rental payment has not been authorized" }, 409);
+    }
+
     const errors: string[] = [];
 
     // Capture the rental payment (actually charge the renter)
-    if (rental.stripe_payment_intent) {
-      try {
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(rental.stripe_payment_intent);
+      if (paymentIntent.status === "requires_capture") {
         await stripe.paymentIntents.capture(rental.stripe_payment_intent);
-      } catch (err: any) {
-        // Already captured is fine
-        if (!err.message?.includes("already been captured")) {
-          errors.push(`Capture failed: ${err.message}`);
-        }
+      } else if (paymentIntent.status !== "succeeded") {
+        errors.push(`Payment is ${paymentIntent.status}, not capturable`);
+      }
+    } catch (err: any) {
+      // Already captured is fine; every other failure must stop completion.
+      if (!err.message?.includes("already been captured")) {
+        errors.push(`Capture failed: ${err.message}`);
       }
     }
 
