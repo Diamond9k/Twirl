@@ -1,11 +1,39 @@
 import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+const SUPABASE_KEY_PLACEHOLDERS = new Set([
+  "your-anon-key",
+  "your-anon-jwt",
+  "sb_publishable_xxx",
+]);
+
+function getPublicSupabaseKey() {
+  const publishableKey = cleanSupabaseKey(process.env.EXPO_PUBLIC_SUPABASE_KEY);
+  const anonKey = cleanSupabaseKey(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY);
+  const key = publishableKey ?? anonKey;
+
+  if (key?.startsWith("sb_secret_")) {
+    throw new Error("Do not expose Supabase secret keys in EXPO_PUBLIC_* env vars");
+  }
+
+  if (publishableKey && !publishableKey.startsWith("sb_publishable_")) {
+    throw new Error(
+      "EXPO_PUBLIC_SUPABASE_KEY must be a publishable key (sb_publishable_...). Use EXPO_PUBLIC_SUPABASE_ANON_KEY for legacy anon JWTs."
+    );
+  }
+
+  return key;
+}
+
+function cleanSupabaseKey(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed || SUPABASE_KEY_PLACEHOLDERS.has(trimmed)) return undefined;
+  return trimmed;
+}
+
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 /** Legacy anon JWT (`eyJ…`) or dashboard publishable key (`sb_publishable_…`). */
-const supabaseKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.EXPO_PUBLIC_SUPABASE_KEY;
+const supabaseKey = getPublicSupabaseKey();
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error(

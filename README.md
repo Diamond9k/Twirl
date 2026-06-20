@@ -17,7 +17,7 @@ npm install
 cp .env.example .env.local
 ```
 
-Edit `.env.local` with your Supabase URL and anon key, Stripe **publishable** key, and `EXPO_PUBLIC_API_URL` pointing at your deployed Edge Functions base (for example `https://<project-ref>.supabase.co/functions/v1`). Do not put Stripe secret keys in the mobile app.
+Edit `.env.local` with your Supabase URL, either a Supabase **publishable** key or legacy anon key, Stripe **publishable** key, and `EXPO_PUBLIC_API_URL` pointing at your deployed Edge Functions base (for example `https://<project-ref>.supabase.co/functions/v1`). Do not put Stripe or Supabase secret keys in the mobile app.
 
 ## Open in Xcode (first time on this machine)
 
