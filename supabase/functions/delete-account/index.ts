@@ -10,6 +10,9 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+const IN_PROGRESS_RENTAL_DELETE_ERROR =
+  "Cannot delete account while rentals are still in progress.";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: cors });
@@ -27,7 +30,10 @@ Deno.serve(async (req) => {
 
     // 1. Remove all of the user's rows (transactional, ordered for FK constraints).
     const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user: user.id });
-    if (rpcError) return json({ error: rpcError.message }, 500);
+    if (rpcError) {
+      const status = rpcError.message.includes(IN_PROGRESS_RENTAL_DELETE_ERROR) ? 409 : 500;
+      return json({ error: rpcError.message }, status);
+    }
 
     // 2. Remove the auth identity itself.
     const { error: delError } = await supabase.auth.admin.deleteUser(user.id);
