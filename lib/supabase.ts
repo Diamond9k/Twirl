@@ -2,10 +2,21 @@ import { createClient } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const exampleKeys = new Set([
+  "your-anon-key",
+  "your-anon-jwt",
+  "sb_publishable_xxx",
+]);
+
+function configuredKey(value: string | undefined) {
+  const trimmed = value?.trim();
+  return trimmed && !exampleKeys.has(trimmed) ? trimmed : undefined;
+}
+
 /** Legacy anon JWT (`eyJ…`) or dashboard publishable key (`sb_publishable_…`). */
 const supabaseKey =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.EXPO_PUBLIC_SUPABASE_KEY;
+  configuredKey(process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY) ||
+  configuredKey(process.env.EXPO_PUBLIC_SUPABASE_KEY);
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error(
