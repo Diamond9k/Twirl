@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
 
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("id, renter_id, owner_id, status, total_price, deposit_amount, stripe_payment_intent, stripe_deposit_intent")
+      .select("id, renter_id, owner_id, status, total_price, commission_amount, deposit_amount, stripe_payment_intent, stripe_deposit_intent, owner:profiles!owner_id(stripe_account_id)")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
       .single();
@@ -45,12 +45,24 @@ Deno.serve(async (req) => {
     if (!rental.stripe_payment_intent) return json({ error: "Missing rental payment intent" }, 409);
 
     const expectedAmount = cents(rental.total_price);
+    const expectedApplicationFee = cents(rental.commission_amount ?? 0);
     const expectedDeposit = cents(rental.deposit_amount ?? 0);
     if (expectedAmount <= 0) return json({ error: "Rental amount is invalid" }, 400);
+    if (expectedApplicationFee <= 0) return json({ error: "Application fee is invalid" }, 400);
+
+    const ownerProfile = Array.isArray(rental.owner) ? rental.owner[0] : rental.owner;
+    const destination = ownerProfile?.stripe_account_id;
+    if (!destination) return json({ error: "Owner has not set up payouts" }, 409);
 
     const paymentIntent = await stripe.paymentIntents.retrieve(rental.stripe_payment_intent);
     if (paymentIntent.amount !== expectedAmount) {
       return json({ error: "Payment amount does not match rental" }, 409);
+    }
+    if (paymentIntentDestination(paymentIntent) !== destination) {
+      return json({ error: "Payment is not routed to the owner" }, 409);
+    }
+    if ((paymentIntent.application_fee_amount ?? 0) !== expectedApplicationFee) {
+      return json({ error: "Platform fee does not match rental" }, 409);
     }
     if (!isAuthorized(paymentIntent.status)) {
       return json({ error: "Payment has not been authorized" }, 409);
@@ -94,6 +106,12 @@ function cents(value: number | string | null | undefined): number {
   const parsed = typeof value === "string" ? Number(value) : value ?? 0;
   if (!Number.isFinite(parsed)) return 0;
   return Math.round(parsed * 100);
+}
+
+function paymentIntentDestination(intent: Stripe.PaymentIntent): string | null {
+  const destination = intent.transfer_data?.destination;
+  if (!destination) return null;
+  return typeof destination === "string" ? destination : destination.id;
 }
 
 function json(body: unknown, status = 200) {

@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     // Verify rental belongs to this user and has been approved by the owner.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("id, renter_id, status, start_date, end_date, stripe_payment_intent, stripe_deposit_intent, items(price_per_day, deposit)")
+      .select("id, renter_id, status, start_date, end_date, stripe_payment_intent, stripe_deposit_intent, items(price_per_day, deposit), owner:profiles!owner_id(stripe_account_id)")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
       .eq("status", "approved")
@@ -47,15 +47,29 @@ Deno.serve(async (req) => {
     const quote = computeRentalQuote(rental);
     if (quote.amount <= 0) return json({ error: "Rental amount is invalid" }, 400);
     if (quote.deposit < 0) return json({ error: "Deposit amount is invalid" }, 400);
+    if (quote.applicationFeeAmount <= 0) return json({ error: "Application fee is invalid" }, 400);
+
+    const ownerProfile = Array.isArray(rental.owner) ? rental.owner[0] : rental.owner;
+    const destination = ownerProfile?.stripe_account_id;
+    if (!destination) return json({ error: "Owner has not set up payouts" }, 409);
+
+    const account = await stripe.accounts.retrieve(destination);
+    if ((account as any).deleted || !(account as any).charges_enabled) {
+      return json({ error: "Owner has not completed payout setup" }, 409);
+    }
 
     // Create PaymentIntent for rental amount (manual capture — charge on handoff)
     const paymentIntent = await getOrCreatePaymentIntent({
       existingIntentId: rental.stripe_payment_intent,
       expectedAmount: quote.amount,
+      expectedDestination: destination,
+      expectedApplicationFeeAmount: quote.applicationFeeAmount,
       create: () => stripe.paymentIntents.create({
         amount: quote.amount,
         currency: "usd",
         capture_method: "manual",
+        application_fee_amount: quote.applicationFeeAmount,
+        transfer_data: { destination },
         metadata: { rental_id, type: "rental", user_id: user.id },
       }),
     });
@@ -116,6 +130,7 @@ type RentalForQuote = {
   start_date: string;
   end_date: string;
   items?: { price_per_day?: number | string | null; deposit?: number | string | null } | Array<{ price_per_day?: number | string | null; deposit?: number | string | null }>;
+  owner?: { stripe_account_id?: string | null } | Array<{ stripe_account_id?: string | null }>;
 };
 
 function computeRentalQuote(rental: RentalForQuote) {
@@ -132,6 +147,7 @@ function computeRentalQuote(rental: RentalForQuote) {
     commissionDollars,
     depositDollars,
     amount: cents(totalDollars),
+    applicationFeeAmount: cents(commissionDollars),
     deposit: cents(depositDollars),
   };
 }
@@ -160,14 +176,31 @@ function cents(value: number): number {
 async function getOrCreatePaymentIntent(args: {
   existingIntentId?: string | null;
   expectedAmount: number;
+  expectedDestination?: string;
+  expectedApplicationFeeAmount?: number;
   create: () => Promise<Stripe.PaymentIntent>;
 }): Promise<Stripe.PaymentIntent> {
   if (args.existingIntentId) {
     const existing = await stripe.paymentIntents.retrieve(args.existingIntentId);
-    if (existing.amount === args.expectedAmount && !["canceled", "succeeded"].includes(existing.status)) {
+    const existingDestination = paymentIntentDestination(existing);
+    const existingApplicationFee = existing.application_fee_amount ?? 0;
+    const destinationMatches = !args.expectedDestination || existingDestination === args.expectedDestination;
+    const applicationFeeMatches = args.expectedApplicationFeeAmount == null || existingApplicationFee === args.expectedApplicationFeeAmount;
+    if (
+      existing.amount === args.expectedAmount &&
+      destinationMatches &&
+      applicationFeeMatches &&
+      !["canceled", "succeeded"].includes(existing.status)
+    ) {
       return existing;
     }
   }
 
   return args.create();
+}
+
+function paymentIntentDestination(intent: Stripe.PaymentIntent): string | null {
+  const destination = intent.transfer_data?.destination;
+  if (!destination) return null;
+  return typeof destination === "string" ? destination : destination.id;
 }

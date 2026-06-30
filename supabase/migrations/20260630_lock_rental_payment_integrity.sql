@@ -4,6 +4,8 @@
 -- Payment, contract, money, and Stripe intent fields are written by service-role
 -- functions after Stripe verification.
 
+alter table public.profiles add column if not exists stripe_account_id text;
+
 drop policy if exists "Rental parties update rentals" on public.rentals;
 drop policy if exists "Owners approve or cancel pending rentals" on public.rentals;
 drop policy if exists "Owners start paid rentals" on public.rentals;
