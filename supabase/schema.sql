@@ -194,7 +194,19 @@ alter table rentals enable row level security;
 
 create policy "Rental parties see rentals"    on rentals for select using (auth.uid() = renter_id or auth.uid() = owner_id);
 create policy "Renters create rentals"        on rentals for insert with check (auth.uid() = renter_id and renter_id <> owner_id);
-create policy "Rental parties update rentals" on rentals for update using (auth.uid() = renter_id or auth.uid() = owner_id);
+revoke update on rentals from anon, authenticated;
+grant update (status) on rentals to authenticated;
+grant update on rentals to service_role;
+
+create policy "Owners approve or cancel pending rentals" on rentals
+  for update to authenticated
+  using (auth.uid() = owner_id and status = 'pending')
+  with check (auth.uid() = owner_id and status in ('approved', 'cancelled'));
+
+create policy "Owners start paid rentals" on rentals
+  for update to authenticated
+  using (auth.uid() = owner_id and status = 'paid')
+  with check (auth.uid() = owner_id and status = 'active');
 
 create trigger rentals_updated_at before update on rentals
   for each row execute function set_updated_at();
@@ -227,6 +239,63 @@ create policy "Renters create contracts"       on rental_contracts
 -- No updates or deletes — immutable audit log
 
 create index idx_contracts_rental on rental_contracts(rental_id);
+
+create or replace function confirm_rental_payment(
+  p_rental_id uuid,
+  p_renter_id uuid,
+  p_owner_id uuid,
+  p_deposit_intent_id text,
+  p_agreed_at timestamptz
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  update public.rentals
+     set status = 'paid',
+         contract_agreed = true,
+         contract_agreed_at = p_agreed_at
+   where id = p_rental_id
+     and renter_id = p_renter_id
+     and owner_id = p_owner_id
+     and status = 'approved';
+
+  if not found then
+    raise exception 'Rental is no longer approved';
+  end if;
+
+  if not exists (
+    select 1
+      from public.rental_contracts
+     where rental_id = p_rental_id
+       and renter_id = p_renter_id
+  ) then
+    insert into public.rental_contracts (
+      rental_id,
+      renter_id,
+      owner_id,
+      agreed_at,
+      deposit_intent_id,
+      terms_version
+    )
+    values (
+      p_rental_id,
+      p_renter_id,
+      p_owner_id,
+      p_agreed_at,
+      p_deposit_intent_id,
+      '1.0'
+    );
+  end if;
+end;
+$$;
+
+revoke execute on function confirm_rental_payment(uuid, uuid, uuid, text, timestamptz)
+  from public, anon, authenticated;
+grant execute on function confirm_rental_payment(uuid, uuid, uuid, text, timestamptz)
+  to service_role;
 
 -- ─── REVIEWS ────────────────────────────────────────────────────────────────
 
