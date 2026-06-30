@@ -38,6 +38,7 @@ create table profiles (
   rating          numeric(3,2) default 0 check (rating between 0 and 5),
   total_rentals   integer default 0 check (total_rentals >= 0),
   total_earnings  numeric(10,2) default 0 check (total_earnings >= 0),
+  stripe_account_id text,
   push_token      text,
   created_at      timestamptz default now(),
   updated_at      timestamptz default now()
