@@ -12,6 +12,18 @@ security definer
 set search_path = ''
 as $$
 begin
+  if exists (
+    select 1
+      from public.rentals
+     where (owner_id = p_user
+        or renter_id = p_user
+        or item_id in (select id from public.items where owner_id = p_user))
+       and status <> 'cancelled'
+  ) then
+    raise exception 'Account deletion requires support review while rental history or open rentals exist.'
+      using errcode = 'P0001';
+  end if;
+
   delete from public.reviews
     where reviewer_id = p_user or reviewee_id = p_user;
 

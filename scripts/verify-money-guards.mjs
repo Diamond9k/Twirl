@@ -4,6 +4,8 @@ const files = {
   payment: read("supabase/functions/create-payment-intent/index.ts"),
   contract: read("app/contract/[id].tsx"),
   migration: read("supabase/migrations/20260630_lock_rental_payment_integrity.sql"),
+  deletionMigration: read("supabase/migrations/20260604_account_deletion.sql"),
+  deleteAccount: read("supabase/functions/delete-account/index.ts"),
 };
 
 mustInclude(files.payment, ".eq(\"status\", \"approved\")", "payment intents require owner approval");
@@ -22,6 +24,11 @@ mustInclude(files.migration, "alter table public.profiles add column if not exis
 mustInclude(files.migration, "revoke update on public.rentals from anon, authenticated;", "migration revokes broad rental updates");
 mustInclude(files.migration, "grant update (status) on public.rentals to authenticated;", "migration limits authenticated updates to status");
 mustInclude(files.migration, "public.confirm_rental_payment", "migration defines service-role payment confirmation RPC");
+
+mustInclude(files.deletionMigration, "from public.rentals", "deletion guard checks rental records");
+mustInclude(files.deletionMigration, "status <> 'cancelled'", "deletion guard preserves non-cancelled rentals");
+mustInclude(files.deletionMigration, "Account deletion requires support review", "deletion guard raises a support-review conflict");
+mustInclude(files.deleteAccount, "rpcError.code === \"P0001\" ? 409 : 500", "delete-account surfaces guarded deletion as conflict");
 
 console.log("money guard checks passed");
 
