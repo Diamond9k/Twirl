@@ -30,49 +30,80 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { rental_id, amount, deposit } = await req.json();
-    if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
+    const { rental_id } = await req.json();
+    if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
-    // Verify rental belongs to this user and is still pending
+    // Verify rental belongs to this user and has been approved by the owner.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select("id, renter_id, status, total_price, deposit_amount")
+      .select("id, renter_id, status, start_date, end_date, stripe_payment_intent, stripe_deposit_intent, items(price_per_day, deposit), owner:profiles!owner_id(stripe_account_id)")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
-      .eq("status", "pending")
+      .eq("status", "approved")
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
 
+    const quote = computeRentalQuote(rental);
+    if (quote.amount <= 0) return json({ error: "Rental amount is invalid" }, 400);
+    if (quote.deposit < 0) return json({ error: "Deposit amount is invalid" }, 400);
+    if (quote.applicationFeeAmount <= 0) return json({ error: "Application fee is invalid" }, 400);
+
+    const ownerProfile = Array.isArray(rental.owner) ? rental.owner[0] : rental.owner;
+    const destination = ownerProfile?.stripe_account_id;
+    if (!destination) return json({ error: "Owner has not set up payouts" }, 409);
+
+    const account = await stripe.accounts.retrieve(destination);
+    if ((account as any).deleted || !(account as any).charges_enabled) {
+      return json({ error: "Owner has not completed payout setup" }, 409);
+    }
+
     // Create PaymentIntent for rental amount (manual capture — charge on handoff)
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount,
-      currency: "usd",
-      capture_method: "manual",
-      metadata: { rental_id, type: "rental", user_id: user.id },
+    const paymentIntent = await getOrCreatePaymentIntent({
+      existingIntentId: rental.stripe_payment_intent,
+      expectedAmount: quote.amount,
+      expectedDestination: destination,
+      expectedApplicationFeeAmount: quote.applicationFeeAmount,
+      create: () => stripe.paymentIntents.create({
+        amount: quote.amount,
+        currency: "usd",
+        capture_method: "manual",
+        application_fee_amount: quote.applicationFeeAmount,
+        transfer_data: { destination },
+        metadata: { rental_id, type: "rental", user_id: user.id },
+      }),
     });
+    if (!paymentIntent.client_secret) return json({ error: "Payment intent missing client secret" }, 500);
 
     // Create PaymentIntent for deposit (manual capture — hold, release on safe return)
     let depositIntentClientSecret: string | null = null;
-    if (deposit && deposit > 0) {
-      const depositIntent = await stripe.paymentIntents.create({
-        amount: deposit,
-        currency: "usd",
-        capture_method: "manual",
-        metadata: { rental_id, type: "deposit", user_id: user.id },
+    let depositIntentId: string | null = quote.deposit > 0 ? rental.stripe_deposit_intent ?? null : null;
+    if (quote.deposit > 0) {
+      const depositIntent = await getOrCreatePaymentIntent({
+        existingIntentId: rental.stripe_deposit_intent,
+        expectedAmount: quote.deposit,
+        create: () => stripe.paymentIntents.create({
+          amount: quote.deposit,
+          currency: "usd",
+          capture_method: "manual",
+          metadata: { rental_id, type: "deposit", user_id: user.id },
+        }),
       });
+      if (!depositIntent.client_secret) return json({ error: "Deposit intent missing client secret" }, 500);
       depositIntentClientSecret = depositIntent.client_secret;
-
-      await supabase
-        .from("rentals")
-        .update({ stripe_deposit_intent: depositIntent.id })
-        .eq("id", rental_id);
+      depositIntentId = depositIntent.id;
     }
 
-    // Store payment intent ID on rental
+    // Store the server-computed quote and Stripe intent IDs on the rental.
     await supabase
       .from("rentals")
-      .update({ stripe_payment_intent: paymentIntent.id })
+      .update({
+        total_price: quote.totalDollars,
+        commission_amount: quote.commissionDollars,
+        deposit_amount: quote.depositDollars,
+        stripe_payment_intent: paymentIntent.id,
+        stripe_deposit_intent: depositIntentId,
+      })
       .eq("id", rental_id);
 
     return json({
@@ -93,4 +124,83 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+type RentalForQuote = {
+  start_date: string;
+  end_date: string;
+  items?: { price_per_day?: number | string | null; deposit?: number | string | null } | Array<{ price_per_day?: number | string | null; deposit?: number | string | null }>;
+  owner?: { stripe_account_id?: string | null } | Array<{ stripe_account_id?: string | null }>;
+};
+
+function computeRentalQuote(rental: RentalForQuote) {
+  const item = Array.isArray(rental.items) ? rental.items[0] : rental.items;
+  const pricePerDay = dollars(item?.price_per_day);
+  const depositDollars = dollars(item?.deposit);
+  const days = rentalDays(rental.start_date, rental.end_date);
+  const subtotalDollars = roundDollars(pricePerDay * days);
+  const commissionDollars = roundDollars(subtotalDollars * 0.15);
+  const totalDollars = roundDollars(subtotalDollars + commissionDollars);
+
+  return {
+    totalDollars,
+    commissionDollars,
+    depositDollars,
+    amount: cents(totalDollars),
+    applicationFeeAmount: cents(commissionDollars),
+    deposit: cents(depositDollars),
+  };
+}
+
+function rentalDays(startDate: string, endDate: string): number {
+  const startMs = Date.parse(`${startDate}T00:00:00Z`);
+  const endMs = Date.parse(`${endDate}T00:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 0;
+  return Math.ceil((endMs - startMs) / 86400000);
+}
+
+function dollars(value: number | string | null | undefined): number {
+  const parsed = typeof value === "string" ? Number(value) : value ?? 0;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function roundDollars(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function cents(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100);
+}
+
+async function getOrCreatePaymentIntent(args: {
+  existingIntentId?: string | null;
+  expectedAmount: number;
+  expectedDestination?: string;
+  expectedApplicationFeeAmount?: number;
+  create: () => Promise<Stripe.PaymentIntent>;
+}): Promise<Stripe.PaymentIntent> {
+  if (args.existingIntentId) {
+    const existing = await stripe.paymentIntents.retrieve(args.existingIntentId);
+    const existingDestination = paymentIntentDestination(existing);
+    const existingApplicationFee = existing.application_fee_amount ?? 0;
+    const destinationMatches = !args.expectedDestination || existingDestination === args.expectedDestination;
+    const applicationFeeMatches = args.expectedApplicationFeeAmount == null || existingApplicationFee === args.expectedApplicationFeeAmount;
+    if (
+      existing.amount === args.expectedAmount &&
+      destinationMatches &&
+      applicationFeeMatches &&
+      !["canceled", "succeeded"].includes(existing.status)
+    ) {
+      return existing;
+    }
+  }
+
+  return args.create();
+}
+
+function paymentIntentDestination(intent: Stripe.PaymentIntent): string | null {
+  const destination = intent.transfer_data?.destination;
+  if (!destination) return null;
+  return typeof destination === "string" ? destination : destination.id;
 }
