@@ -25,13 +25,29 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    // 1. Remove all of the user's rows (transactional, ordered for FK constraints).
+    const blockingStatuses = ["pending", "approved", "paid", "active", "disputed"];
+    const { count, error: rentalCheckError } = await supabase
+      .from("rentals")
+      .select("id", { count: "exact", head: true })
+      .or(`owner_id.eq.${user.id},renter_id.eq.${user.id}`)
+      .in("status", blockingStatuses);
+
+    if (rentalCheckError) return json({ error: rentalCheckError.message }, 500);
+    if ((count ?? 0) > 0) {
+      return json(
+        { error: "Account deletion is blocked while you have pending or active rentals. Complete or cancel them first." },
+        409
+      );
+    }
+
+    // 1. Soft-delete the auth identity first so a later data-cleanup failure cannot
+    // leave an active login with app data already removed.
+    const { error: delError } = await supabase.auth.admin.deleteUser(user.id, true);
+    if (delError) return json({ error: delError.message }, 500);
+
+    // 2. Remove/anonymize app data while preserving completed rental history.
     const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user: user.id });
     if (rpcError) return json({ error: rpcError.message }, 500);
-
-    // 2. Remove the auth identity itself.
-    const { error: delError } = await supabase.auth.admin.deleteUser(user.id);
-    if (delError) return json({ error: delError.message }, 500);
 
     return json({ success: true });
   } catch (e) {

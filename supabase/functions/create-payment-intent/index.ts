@@ -30,23 +30,27 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    const { rental_id, amount, deposit } = await req.json();
-    if (!rental_id || !amount) return json({ error: "Missing rental_id or amount" }, 400);
+    const { rental_id } = await req.json();
+    if (!rental_id) return json({ error: "Missing rental_id" }, 400);
 
-    // Verify rental belongs to this user and is still pending
+    // Verify rental belongs to this user and is still payable.
     const { data: rental, error: rentalError } = await supabase
       .from("rentals")
       .select("id, renter_id, status, total_price, deposit_amount")
       .eq("id", rental_id)
       .eq("renter_id", user.id)
-      .eq("status", "pending")
+      .in("status", ["pending", "approved"])
       .single();
 
     if (rentalError || !rental) return json({ error: "Rental not found or not authorized" }, 404);
 
+    const amountCents = moneyToCents(rental.total_price);
+    if (!amountCents || amountCents <= 0) return json({ error: "Invalid rental amount" }, 400);
+    const depositCents = moneyToCents(rental.deposit_amount);
+
     // Create PaymentIntent for rental amount (manual capture — charge on handoff)
     const paymentIntent = await stripe.paymentIntents.create({
-      amount,
+      amount: amountCents,
       currency: "usd",
       capture_method: "manual",
       metadata: { rental_id, type: "rental", user_id: user.id },
@@ -54,9 +58,9 @@ Deno.serve(async (req) => {
 
     // Create PaymentIntent for deposit (manual capture — hold, release on safe return)
     let depositIntentClientSecret: string | null = null;
-    if (deposit && deposit > 0) {
+    if (depositCents > 0) {
       const depositIntent = await stripe.paymentIntents.create({
-        amount: deposit,
+        amount: depositCents,
         currency: "usd",
         capture_method: "manual",
         metadata: { rental_id, type: "deposit", user_id: user.id },
@@ -93,4 +97,10 @@ function json(body: unknown, status = 200) {
       "Access-Control-Allow-Origin": "*",
     },
   });
+}
+
+function moneyToCents(value: unknown) {
+  const amount = typeof value === "string" ? Number(value) : value;
+  if (typeof amount !== "number" || !Number.isFinite(amount)) return 0;
+  return Math.round(amount * 100);
 }
