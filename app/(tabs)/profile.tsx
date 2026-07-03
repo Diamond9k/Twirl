@@ -54,7 +54,7 @@ export default function ProfileScreen() {
   function deleteAccount() {
     Alert.alert(
       "Delete account",
-      "This permanently deletes your account, listings, rentals, and messages. This cannot be undone.",
+      "This will deactivate your login, remove your listings, and anonymize your profile/messages. Completed rental history is kept for both parties. Pending or active rentals must be completed or cancelled first.",
       [
         { text: "Cancel", style: "cancel" },
         {
