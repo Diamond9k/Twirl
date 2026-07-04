@@ -10,6 +10,8 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, content-type",
 };
 
+const RENTAL_HISTORY_BLOCK_MESSAGE = "rental history must be retained safely";
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: cors });
@@ -25,9 +27,13 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    // 1. Remove all of the user's rows (transactional, ordered for FK constraints).
+    // 1. Remove all of the user's rows. The RPC rejects accounts with rental
+    // history so payment/audit records cannot be destroyed by this path.
     const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user: user.id });
-    if (rpcError) return json({ error: rpcError.message }, 500);
+    if (rpcError) {
+      const isRentalHistoryBlock = rpcError.message.includes(RENTAL_HISTORY_BLOCK_MESSAGE);
+      return json({ error: rpcError.message }, isRentalHistoryBlock ? 409 : 500);
+    }
 
     // 2. Remove the auth identity itself.
     const { error: delError } = await supabase.auth.admin.deleteUser(user.id);
