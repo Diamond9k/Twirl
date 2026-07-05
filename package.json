@@ -8,6 +8,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "verify:account-deletion-guard": "node scripts/verify-account-deletion-guard.js",
     "ios:prebuild": "expo prebuild --platform ios",
     "ios:pods": "cd ios && pod install",
     "ios:prep": "npm run ios:prebuild && npm run ios:pods",

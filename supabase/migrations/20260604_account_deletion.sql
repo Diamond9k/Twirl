@@ -12,6 +12,22 @@ security definer
 set search_path = ''
 as $$
 begin
+  if exists (
+    select 1
+    from public.rentals r
+    where (
+      r.renter_id = p_user
+      or r.owner_id = p_user
+      or r.item_id in (select i.id from public.items i where i.owner_id = p_user)
+    )
+    and r.status in ('pending', 'approved', 'paid', 'active', 'disputed')
+  ) then
+    raise exception 'Cannot delete account while rentals are unresolved.'
+      using
+        errcode = 'P0001',
+        hint = 'Complete, cancel, or resolve every rental before deleting the account.';
+  end if;
+
   delete from public.reviews
     where reviewer_id = p_user or reviewee_id = p_user;
 
