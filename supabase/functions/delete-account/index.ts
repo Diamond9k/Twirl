@@ -27,7 +27,15 @@ Deno.serve(async (req) => {
 
     // 1. Remove all of the user's rows (transactional, ordered for FK constraints).
     const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user: user.id });
-    if (rpcError) return json({ error: rpcError.message }, 500);
+    if (rpcError) {
+      if (rpcError.message.includes("Cannot delete account while rentals are unresolved")) {
+        return json({
+          error: "Finish or cancel every rental before deleting your account.",
+        }, 409);
+      }
+
+      return json({ error: rpcError.message }, 500);
+    }
 
     // 2. Remove the auth identity itself.
     const { error: delError } = await supabase.auth.admin.deleteUser(user.id);
