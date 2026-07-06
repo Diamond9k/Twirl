@@ -25,11 +25,15 @@ Deno.serve(async (req) => {
     );
     if (authError || !user) return json({ error: "Unauthorized" }, 401);
 
-    // 1. Remove all of the user's rows (transactional, ordered for FK constraints).
+    // 1. Remove deletable rows. Users with rental/payment history are blocked so
+    // those records can be anonymized manually without losing transaction data.
     const { error: rpcError } = await supabase.rpc("delete_user_data", { p_user: user.id });
-    if (rpcError) return json({ error: rpcError.message }, 500);
+    if (rpcError) {
+      const status = rpcError.code === "P0001" ? 409 : 500;
+      return json({ error: rpcError.message }, status);
+    }
 
-    // 2. Remove the auth identity itself.
+    // 2. Remove the auth identity itself only after the data RPC succeeds.
     const { error: delError } = await supabase.auth.admin.deleteUser(user.id);
     if (delError) return json({ error: delError.message }, 500);
 
